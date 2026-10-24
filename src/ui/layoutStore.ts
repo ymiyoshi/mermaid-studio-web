@@ -21,9 +21,10 @@ interface Transient {
   paletteOpen: boolean;
   timelapseOpen: boolean;
   snippetsOpen: boolean;
+  presentOpen: boolean;
 }
 
-export const useLayout = create<Layout & Transient>(() => ({ ...DEFAULT_LAYOUT, mobileTab: 'diagram', paletteOpen: false, timelapseOpen: false, snippetsOpen: false }));
+export const useLayout = create<Layout & Transient>(() => ({ ...DEFAULT_LAYOUT, mobileTab: 'diagram', paletteOpen: false, timelapseOpen: false, snippetsOpen: false, presentOpen: false }));
 
 export async function loadLayout() {
   const saved = await getSetting<Partial<Layout>>('layout');

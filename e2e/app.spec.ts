@@ -173,6 +173,27 @@ test('部品集: 選んだ範囲を登録し、再読み込みしてもカーソ
   expect((await historyLabels(page)).at(-1)).toBe('部品「終了へ」を差し込む');
 });
 
+test('発表モードで、図を全画面で順に見せる', async ({ page }) => {
+  const errors = await openApp(page);
+  await newFromTemplate(page, '円グラフ');
+  await page.getByTitle('発表モード（図を全画面で順に見せる）').click();
+  const setup = page.getByRole('dialog', { name: '発表モード' });
+  await setup.getByLabel('並び順').selectOption({ label: '名前順' });
+  // 日本語の並び（カタカナが漢字より先）
+  await expect(setup.locator('.present-list li')).toHaveText(['フローチャート', '円グラフ']);
+  await setup.getByRole('button', { name: '2 枚で始める' }).click();
+  const show = page.locator('.presentation');
+  await expect(show.getByRole('status')).toHaveText('1 / 2');
+  await expect(show.locator('.presentation-title')).toHaveText('フローチャート');
+  await expect(show.locator('.presentation-svg')).toContainText('処理を実行');
+  await page.keyboard.press('ArrowRight');
+  await expect(show.getByRole('status')).toHaveText('2 / 2');
+  await expect(show.locator('.presentation-title')).toHaveText('円グラフ');
+  await page.keyboard.press('Escape');
+  await expect(show).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test('右クリックのメニューから接続する', async ({ page }) => {
   await openApp(page);
   await node(page, '終了').click({ button: 'right' });

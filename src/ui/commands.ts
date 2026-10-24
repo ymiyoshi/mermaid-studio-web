@@ -56,6 +56,7 @@ export function buildCommands(): Command[] {
     hasDoc && { id: 'zoomIn', title: t('toolbar.zoomIn'), run: diagram('zoomIn') },
     hasDoc && { id: 'zoomOut', title: t('toolbar.zoomOut'), run: diagram('zoomOut') },
     hasDoc && { id: 'togglePanel', title: t('cmd.togglePanel'), run: diagram('togglePanel') },
+    { id: 'present', title: t('present.open'), run: () => useLayout.setState({ presentOpen: true }) },
     hasDoc && { id: 'snippets', title: t('snippet.open'), run: () => useLayout.setState({ snippetsOpen: true }) },
     hasDoc && { id: 'timelapse', title: t('timelapse.open'), run: () => useLayout.setState({ timelapseOpen: true }) },
     ...THEMES.map((th) => ({ id: `theme:${th}`, title: t('cmd.theme', { theme: th }), run: () => setTheme(th) })),
