@@ -1,0 +1,24 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "timezone": "Asia/Tokyo",
+  "schedule": ["before 9am on monday"],
+  "rangeStrategy": "pin",
+  "labels": ["依存関係"],
+  "packageRules": [
+    {
+      "description": "メジャー以外の更新は 1 本の PR にまとめる",
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "メジャー以外の更新"
+    },
+    {
+      "description": "mermaid は SVG の対応付けに関わるので、ほかとまとめず単独の PR にする（AGENTS.md「mermaid の版」）",
+      "matchPackageNames": ["mermaid"],
+      "groupName": null,
+      "labels": ["依存関係", "mermaid"],
+      "prBodyNotes": [
+        "**マージ前に:** 開発サーバーで `tests/fixtures/capture.js` を実行して `tests/fixtures/rendered-svg.json` を作り直し、この PR にコミットする。そのうえで `npm test`（特に `svgMapping.test.ts`）と `npm run test:e2e` が通ることを確かめる。"
+      ]
+    }
+  ]
+}
