@@ -70,6 +70,9 @@ export function Header() {
         <button className="icon-btn" onClick={redo} disabled={!canRedo} title={t('toolbar.redo')}>
           ↷
         </button>
+        <button className="icon-btn" title={t('snippet.open')} disabled={!current} onClick={() => useLayout.setState({ snippetsOpen: true })}>
+          🧩
+        </button>
         <button
           className={`icon-btn pane-toggle${historyOpen ? ' active' : ''}`}
           title={t('layout.toggleHistory')}

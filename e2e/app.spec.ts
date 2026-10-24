@@ -149,6 +149,30 @@ test('テーマのタブで、図の先頭の設定（テーマと色）を変�
   expect(errors).toEqual([]);
 });
 
+test('部品集: 選んだ範囲を登録し、再読み込みしてもカーソルの行の下に差し込める', async ({ page }) => {
+  await openApp(page);
+  await page.locator('.cm-line', { hasText: 'C --> E[終了]' }).click();
+  await page.keyboard.press('Home');
+  await page.keyboard.press('Shift+End');
+  await page.getByTitle('部品集（よく使う図の一部を登録・差し込み）').click();
+  const dialog = page.getByRole('dialog', { name: '部品集' });
+  await dialog.getByLabel('部品の名前').fill('終了へ');
+  await dialog.getByRole('button', { name: '選んだ範囲を登録' }).click();
+  await expect(dialog.locator('.snippet-item')).toHaveCount(1);
+  await page.keyboard.press('Escape');
+
+  // 保存は IndexedDB の設定なので、読み込み直しても残る
+  await page.reload();
+  await expect(node(page, '開始')).toBeVisible();
+  await page.locator('.cm-line', { hasText: 'A[開始]' }).click();
+  await page.keyboard.press('End');
+  await page.getByTitle('部品集（よく使う図の一部を登録・差し込み）').click();
+  await dialog.getByRole('button', { name: '差し込む' }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect.poll(() => editorText(page)).toContain('A[開始] --> B{条件を満たす?}\n    C --> E[終了]\n');
+  expect((await historyLabels(page)).at(-1)).toBe('部品「終了へ」を差し込む');
+});
+
 test('右クリックのメニューから接続する', async ({ page }) => {
   await openApp(page);
   await node(page, '終了').click({ button: 'right' });
