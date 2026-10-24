@@ -34,10 +34,13 @@ export function layoutHistory(
   let nextLane = 1;
   // 再帰だと深い履歴でスタックがあふれるので、明示的なスタックで深さ優先にたどる
   const stack: { id: string; lane: number }[] = [{ id: rootId, lane: 0 }];
+  // 壊れた履歴（子が循環している）でも終わるように、一度置いたノードは飛ばす
+  const visited = new Set<string>();
   while (stack.length) {
     const { id, lane } = stack.pop()!;
     const node = nodes.get(id);
-    if (!node) continue;
+    if (!node || visited.has(id)) continue;
+    visited.add(id);
     order.push({ node, lane });
     const kids = [...node.children].sort((a, b) => (nodes.get(a)?.ts ?? 0) - (nodes.get(b)?.ts ?? 0));
     const lanes = kids.map((_, i) => (i === 0 ? lane : nextLane++));

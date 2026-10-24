@@ -49,4 +49,14 @@ describe('layoutHistory', () => {
     const expanded = layoutHistory(tree.nodes, tree.rootId, tree.headId, new Set([fold!.kind === 'fold' ? fold!.key : '']));
     expect(expanded.rows).toHaveLength(tree.nodes.size);
   });
+
+  it('子が循環した壊れた履歴でも終わる', () => {
+    const { tree, add } = build();
+    add('a');
+    add('b');
+    // b の子に a を足して循環させる
+    tree.nodes.get(tree.headId)!.children.push(tree.head.parentId!);
+    const l = layoutHistory(tree.nodes, tree.rootId, tree.headId, new Set());
+    expect(l.rows.filter((r) => r.kind === 'node')).toHaveLength(3);
+  });
 });

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { openDB } from 'idb';
 import { findMermaidBlocks, replaceMermaidBlock, wrapAsMarkdown } from '../src/io/markdown';
 import { buildBackup, parseBackup, remapEntry, type BackupEntry } from '../src/io/backup';
+import { ChangeSet, Text } from '@codemirror/state';
 import { HistoryTree } from '../src/core/history';
 import * as db from '../src/storage/db';
 import { markdownWithDiagram } from '../src/io/files';
@@ -89,6 +90,88 @@ describe('バックアップ', () => {
     expect(r.history.map((n) => n.id)).toEqual(e.history.map((n) => n.id));
   });
 
+  it('分岐・まとめ・整理をした実際の履歴は受け付ける', () => {
+    let text = Text.of(['flowchart LR']);
+    const tree = HistoryTree.create('a', text.toString(), 0);
+    let ts = 1;
+    const add = (s: string, coalesce = false) => {
+      const cs = ChangeSet.of({ from: text.length, insert: s }, text.length);
+      const sel = { anchor: 0, head: 0 };
+      tree.commit(cs, text, { origin: 'typing', label: s, groupKey: 'g', selBefore: sel, selAfter: sel, ts: ts++, coalesce });
+      text = cs.apply(text);
+    };
+    for (let i = 0; i < 25; i++) add(`\n  N${i}`, i % 3 === 0);
+    text = tree.undo()!.changes.apply(text);
+    add('\n  X');
+    text = tree.undo()!.changes.apply(text);
+    add('\n  Y');
+    const all = [...tree.nodes.values()];
+    const json = JSON.stringify(buildBackup([{ doc: { ...entry('a', '').doc, text: text.toString(), headId: tree.headId }, history: all }]));
+    expect(parseBackup(json).docs[0].history).toHaveLength(all.length);
+    tree.pruneBranches();
+    const pruned = JSON.stringify(buildBackup([{ doc: { ...entry('a', '').doc, headId: tree.headId }, history: [...tree.nodes.values()] }]));
+    expect(() => parseBackup(pruned)).not.toThrow();
+  });
+
+  describe('壊れた・細工された履歴は拒否する', () => {
+    const base = () => {
+      let text = Text.of(['a']);
+      const tree = HistoryTree.create('a', 'a', 0);
+      for (const s of ['b', 'c']) {
+        const cs = ChangeSet.of({ from: text.length, insert: s }, text.length);
+        const sel = { anchor: 0, head: 0 };
+        tree.commit(cs, text, { origin: 'typing', label: s, groupKey: null, selBefore: sel, selAfter: sel, ts: 1, coalesce: false });
+        text = cs.apply(text);
+      }
+      const [root, b, c] = structuredClone(tree.takeDirty());
+      return { root, b, c };
+    };
+    const reject = (history: unknown[]) => {
+      const json = JSON.stringify(buildBackup([{ doc: entry('a', 'abc').doc, history } as BackupEntry]));
+      expect(() => parseBackup(json)).toThrow();
+    };
+
+    it('親が循環している', () => {
+      const { root, b, c } = base();
+      b.parentId = c.id;
+      c.children = [b.id];
+      root.children = [];
+      reject([root, b, c]);
+    });
+    it('子が循環している', () => {
+      const { root, b, c } = base();
+      c.children = [b.id];
+      reject([root, b, c]);
+    });
+    it('ルートが 2 つ・ルートが無い', () => {
+      const { root, b, c } = base();
+      reject([root, b, { ...c, parentId: null }]);
+      reject([b, c]);
+    });
+    it('id が重複している', () => {
+      const { root, b, c } = base();
+      reject([root, b, c, c]);
+    });
+    it('変更が JSON として壊れている・長さが合わない', () => {
+      const { root, b, c } = base();
+      reject([root, b, { ...c, forward: 'garbage' }]);
+      reject([root, b, { ...c, inverse: { x: 1 } }]);
+      reject([root, { ...b, forward: ChangeSet.of({ from: 0, insert: 'zz' }, 5).toJSON() }, c]);
+    });
+    it('選択範囲などの型が違う', () => {
+      const { root, b, c } = base();
+      reject([root, b, { ...c, selBefore: null }]);
+      reject([root, b, { ...c, children: [1] }]);
+      reject([root, b, { ...c, snapshot: 5 }]);
+    });
+  });
+
+  it('タグの文字列以外は捨てる', () => {
+    const e = entry('old', 'x');
+    const r = remapEntry({ ...e, doc: { ...e.doc, tags: ['a', 1, null] as unknown as string[] } }, 'new');
+    expect(r.doc.tags).toEqual(['a']);
+  });
+
   it('head が履歴に無ければルートに戻す', () => {
     const e = entry('old', 'x');
     const r = remapEntry({ ...e, doc: { ...e.doc, headId: 'missing' } }, 'new');
@@ -159,5 +242,27 @@ describe('URL 共有', () => {
     const { decodeShare } = await import('../src/io/share');
     expect(decodeShare('#v1/!!!')).toBeNull();
     expect(decodeShare('#other')).toBeNull();
+  });
+
+  it('展開すると巨大になる fragment（展開爆弾）は、上限を超えた時点でやめて null', async () => {
+    const { decodeShare, SHARE_MAX_BYTES, SHARE_PREFIX } = await import('../src/io/share');
+    const { deflateSync, strToU8 } = await import('fflate');
+    const bomb = (n: number) => {
+      const bytes = deflateSync(strToU8(JSON.stringify({ t: 'x', s: 'A'.repeat(n) })), { level: 9 });
+      let bin = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      return SHARE_PREFIX + btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    };
+    expect(decodeShare(bomb(20 * 1024 * 1024))).toBeNull();
+    expect(decodeShare(bomb(SHARE_MAX_BYTES))).toBeNull();
+    // 上限より小さければ読める
+    expect(decodeShare(bomb(SHARE_MAX_BYTES - 100))?.text).toHaveLength(SHARE_MAX_BYTES - 100);
+  });
+
+  it('途中で切れた fragment は null', async () => {
+    const { decodeShare, encodeShare } = await import('../src/io/share');
+    const text = 'flowchart LR\n' + Array.from({ length: 300 }, (_, i) => `  N${i} --> M${i * 7}`).join('\n');
+    const hash = encodeShare({ title: 't', text });
+    expect(decodeShare(hash.slice(0, hash.length - 20))).toBeNull();
   });
 });

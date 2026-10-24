@@ -168,6 +168,18 @@ describe('HistoryTree', () => {
     const back = loaded.undo()!;
     expect(back.changes.apply(doc('ac')).toString()).toBe('a');
   });
+
+  it('親が循環した壊れた履歴では、たどりが終わらずに固まる代わりにエラーにする', () => {
+    const h = new Harness('a');
+    h.insert(1, 'b');
+    h.insert(2, 'c');
+    const nodes = structuredClone(h.tree.takeDirty());
+    // b の親を c にして b ↔ c を循環させる
+    const [, b, c] = nodes;
+    b.parentId = c.id;
+    const loaded = HistoryTree.load('d', nodes, c.id);
+    expect(() => loaded.pathFromRoot(c.id)).toThrow();
+  });
 });
 
 describe('minimalReplace', () => {

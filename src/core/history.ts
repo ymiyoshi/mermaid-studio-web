@@ -208,6 +208,8 @@ export class HistoryTree {
     const path: HistoryNode[] = [];
     for (let n: HistoryNode | undefined = this.get(id); n; n = n.parentId ? this.get(n.parentId) : undefined) {
       path.push(n);
+      // 壊れた履歴（親が循環している）で終わらなくならないように
+      if (path.length > this.nodes.size) throw new Error('history has a cycle');
     }
     return path.reverse();
   }

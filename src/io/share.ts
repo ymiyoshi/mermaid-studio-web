@@ -1,4 +1,4 @@
-import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate';
+import { deflateSync, Inflate, strFromU8, strToU8 } from 'fflate';
 
 // 設計書 §9.4: URL 共有。図のテキストを deflate で圧縮し、base64url にして URL の # 以降に入れる。
 // # 以降（fragment）はサーバーに送られないので、図の内容は外部に出ない。
@@ -7,6 +7,13 @@ import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate';
 export const SHARE_PREFIX = '#v1/';
 /** これより長い URL は、チャットやブラウザによっては切れることがある */
 export const SHARE_URL_WARN = 8000;
+/**
+ * 展開後の大きさの上限（バイト）。数百 KB の URL が数百 MB に展開される「展開爆弾」で、
+ * 巨大な図が保存されて起動できなくなるのを防ぐ。mermaid が描ける大きさ（maxTextSize 既定 5 万文字）より十分大きい
+ */
+export const SHARE_MAX_BYTES = 512 * 1024;
+/** 一度に展開する入力の大きさ。deflate の最大圧縮率は約 1000 倍なので、出力は 1 回あたり 1MB 程度に収まる */
+const INFLATE_STEP = 1024;
 
 export interface SharedDiagram {
   title: string;
@@ -30,11 +37,36 @@ export function encodeShare(d: SharedDiagram): string {
   return SHARE_PREFIX + toBase64Url(deflateSync(strToU8(JSON.stringify({ t: d.title, s: d.text })), { level: 9 }));
 }
 
-/** 不正な fragment なら null */
+/** 少しずつ展開し、maxBytes を超えたら途中でやめて Error を投げる */
+function inflateLimited(data: Uint8Array, maxBytes: number): Uint8Array {
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  let done = false;
+  const inflater = new Inflate((chunk, final) => {
+    total += chunk.length;
+    if (total > maxBytes) throw new Error('share data too large');
+    chunks.push(chunk);
+    if (final) done = true;
+  });
+  for (let i = 0; i < data.length; i += INFLATE_STEP) {
+    inflater.push(data.subarray(i, i + INFLATE_STEP), i + INFLATE_STEP >= data.length);
+  }
+  if (!done) throw new Error('truncated share data');
+  const out = new Uint8Array(total);
+  let pos = 0;
+  for (const c of chunks) {
+    out.set(c, pos);
+    pos += c.length;
+  }
+  return out;
+}
+
+/** 不正な fragment・大きすぎる図なら null */
 export function decodeShare(hash: string): SharedDiagram | null {
   if (!hash.startsWith(SHARE_PREFIX)) return null;
   try {
-    const data = JSON.parse(strFromU8(inflateSync(fromBase64Url(hash.slice(SHARE_PREFIX.length)))));
+    const bytes = inflateLimited(fromBase64Url(hash.slice(SHARE_PREFIX.length)), SHARE_MAX_BYTES);
+    const data = JSON.parse(strFromU8(bytes));
     if (typeof data?.s !== 'string') return null;
     return { title: typeof data.t === 'string' ? data.t.slice(0, 200) : '', text: data.s };
   } catch {
