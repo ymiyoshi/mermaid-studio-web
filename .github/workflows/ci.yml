@@ -1,5 +1,6 @@
-# PR ごとに型チェック・テスト・ビルド・E2E を通す（Renovate の更新 PR もここで確かめる）。
+# PR ごとに型チェック・テスト・ビルド・E2E を通す（Renovate の更新 PR もここで確かめ、通ったものだけ自動でマージされる）。
 # E2E はインストール済みの Chrome で動かす（playwright.config.ts の channel: 'chrome'）。ubuntu-latest には Chrome が入っている。
+# Actions はタグではなくコミットの SHA で固定する（タグは付け替えられるため。更新は Renovate が SHA ごと行う）。
 name: CI
 
 on:
@@ -17,13 +18,26 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+      # レジストリの署名と来歴（provenance）を確かめる。すり替えられたパッケージを入れていないか
+      - run: npm audit signatures
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
       - run: npm run test:e2e
+
+  # PR で足した・上げた依存に、既知の脆弱性（high 以上）があれば落とす
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
