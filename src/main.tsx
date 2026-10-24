@@ -5,6 +5,7 @@ import { init } from './core/session';
 import { startRenderPipeline } from './render/pipeline';
 import { importFromLocationHash, watchShareLinks } from './io/shareActions';
 import { startThumbnails } from './render/thumbs';
+import { watchLaunchFiles } from './io/files';
 import { preloadMermaid } from './render/mermaid';
 import { getLang } from './i18n';
 import './styles.css';
@@ -25,4 +26,5 @@ void init().then(async () => {
   void startThumbnails();
   await importFromLocationHash();
   watchShareLinks();
+  watchLaunchFiles();
 });

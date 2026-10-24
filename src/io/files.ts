@@ -118,6 +118,26 @@ export async function importFile(file: File, handle: FileSystemFileHandle | null
   });
 }
 
+/**
+ * OS から渡されたファイルを開く（PWA のファイルの関連付け。manifest の file_handlers）。
+ * アプリとしてインストールした Chromium 系で、.mmd / .mermaid をこのアプリで開いたときに呼ばれる。
+ * launch_handler が focus-existing なので、開いているウィンドウにも後から渡される
+ */
+export function watchLaunchFiles() {
+  window.launchQueue?.setConsumer((params) => {
+    void (async () => {
+      for (const handle of params.files) {
+        if (handle.kind !== 'file') continue;
+        try {
+          await importFromHandle(handle as FileSystemFileHandle);
+        } catch (e) {
+          reportError(e);
+        }
+      }
+    })();
+  });
+}
+
 /** ドラッグ＆ドロップで読み込む。getAsFileSystemHandle はイベント中に同期的に呼ぶ必要がある */
 export function importFromDrop(e: DragEvent) {
   const item = [...(e.dataTransfer?.items ?? [])].find((i) => i.kind === 'file');
