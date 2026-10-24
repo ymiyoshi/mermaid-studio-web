@@ -15,7 +15,14 @@ export type MobileTab = 'list' | 'text' | 'diagram' | 'history';
 
 export const DEFAULT_LAYOUT: Layout = { sidebar: 240, editor: 440, history: 280, sidebarOpen: true, historyOpen: true };
 
-export const useLayout = create<Layout & { mobileTab: MobileTab }>(() => ({ ...DEFAULT_LAYOUT, mobileTab: 'diagram' }));
+/** 保存しない画面の状態（開いているダイアログなど） */
+interface Transient {
+  mobileTab: MobileTab;
+  paletteOpen: boolean;
+  timelapseOpen: boolean;
+}
+
+export const useLayout = create<Layout & Transient>(() => ({ ...DEFAULT_LAYOUT, mobileTab: 'diagram', paletteOpen: false, timelapseOpen: false }));
 
 export async function loadLayout() {
   const saved = await getSetting<Partial<Layout>>('layout');

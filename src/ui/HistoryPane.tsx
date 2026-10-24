@@ -5,6 +5,7 @@ import { renderSvg } from '../render/mermaid';
 import { layoutHistory } from './historyLayout';
 import { CompareView } from './CompareView';
 import { TimelapseView } from './TimelapseView';
+import { useLayout } from './layoutStore';
 import { t } from '../i18n';
 
 const ROW_H = 30;
@@ -104,7 +105,9 @@ export function HistoryPane() {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [confirmPrune, setConfirmPrune] = useState(false);
   const [compare, setCompare] = useState<{ before: string; after: string } | null>(null);
-  const [timelapse, setTimelapse] = useState(false);
+  // コマンドパレットからも開くので、ストアに持つ
+  const timelapse = useLayout((s) => s.timelapseOpen);
+  const setTimelapse = (v: boolean) => useLayout.setState({ timelapseOpen: v });
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   // 長い履歴でも入力のたびに全行を描き直さないよう、見えている行だけを描く

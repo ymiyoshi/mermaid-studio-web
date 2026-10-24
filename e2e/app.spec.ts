@@ -197,6 +197,24 @@ test('エディタで打つと、図の中の名前を補完できる', async ({
   await expect.poll(() => editorText(page)).toContain('--> B\n  Kensaku');
 });
 
+test('Ctrl+K のコマンドパレットで、テンプレートから図を作り、前の図に戻る', async ({ page }) => {
+  await openApp(page);
+  // エディタにフォーカスがあっても開く
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('Control+K');
+  const palette = page.getByRole('dialog', { name: 'コマンド' });
+  await palette.getByRole('combobox').fill('シーケンス');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.title-input')).toHaveValue('シーケンス図');
+  await expect(palette).toHaveCount(0);
+
+  await page.keyboard.press('Control+K');
+  await palette.getByRole('combobox').fill('開く フローチャート');
+  await expect(palette.getByRole('option')).toHaveCount(1);
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.title-input')).toHaveValue('フローチャート');
+});
+
 test('円グラフは表で編集できる', async ({ page }) => {
   await openApp(page);
   await newFromTemplate(page, '円グラフ');

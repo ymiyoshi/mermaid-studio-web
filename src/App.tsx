@@ -8,6 +8,7 @@ import { useSession } from './core/session';
 import { ConflictBanner, IoDialogs } from './ui/IoDialogs';
 import { loadLayout, saveLayout, useLayout, type MobileTab } from './ui/layoutStore';
 import { useExternalChangeCheck, useFileDrop, useGlobalShortcuts, useMobile } from './ui/useAppEvents';
+import { CommandPalette } from './ui/CommandPalette';
 import { t } from './i18n';
 
 const MOBILE_TABS: { id: MobileTab; label: () => string }[] = [
@@ -70,6 +71,7 @@ export function App() {
           ))}
         </nav>
         <IoDialogs />
+        {layout.paletteOpen && <CommandPalette onClose={() => useLayout.setState({ paletteOpen: false })} />}
         {toast && (
           <div className="toast" role="status" key={toast.id}>
             {toast.message}
@@ -108,6 +110,7 @@ export function App() {
         )}
       </main>
       <IoDialogs />
+      {layout.paletteOpen && <CommandPalette onClose={() => useLayout.setState({ paletteOpen: false })} />}
       {dragging && <div className="drop-overlay">{t('file.drop')}</div>}
       {toast && (
         <div className="toast" role="status" key={toast.id}>

@@ -9,6 +9,7 @@ import { ErrorBanner } from './ErrorBanner';
 import { getSetting, putSetting } from '../storage/db';
 import { DRAG_THRESHOLD_PX, fixSvgSize, rectIn, unionRect, usePanZoom, type Rect, type ViewBox } from './usePanZoom';
 import { contains, findDrop, markContainers, type DropCandidate, type DropSpot } from './reorderDrop';
+import { DIAGRAM_COMMAND_EVENT, type DiagramCommand } from './commands';
 import { t } from '../i18n';
 
 /** 再描画をまたいで同じ要素を指すためのキー。意味上の参照があればそれを使う */
@@ -69,6 +70,19 @@ export function DiagramPane() {
       void putSetting('panelOpen', !v);
       return !v;
     });
+  // コマンドパレットからの操作
+  const commandRef = useRef<(cmd: DiagramCommand) => void>(() => {});
+  commandRef.current = (cmd) => {
+    if (cmd === 'fit') fit();
+    else if (cmd === 'zoomIn') zoomBy(1.25);
+    else if (cmd === 'zoomOut') zoomBy(1 / 1.25);
+    else if (cmd === 'togglePanel') togglePanel();
+  };
+  useEffect(() => {
+    const on = (e: Event) => commandRef.current((e as CustomEvent<DiagramCommand>).detail);
+    addEventListener(DIAGRAM_COMMAND_EVENT, on);
+    return () => removeEventListener(DIAGRAM_COMMAND_EVENT, on);
+  }, []);
   const [renderTick, setRenderTick] = useState(0);
   const [toolbarRect, setToolbarRect] = useState<Rect | null>(null);
   const fittedFor = useRef<string | null>(null);
