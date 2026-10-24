@@ -21,6 +21,23 @@ npm run preview  # 本番ビルドの確認
 
 サブパスに置くので、ビルド時に `--base "/<リポジトリ名>/"` を渡している。アプリの中で `public/` のファイルを参照するときは、`/favicon.svg` のような絶対パスではなく `import.meta.env.BASE_URL` を前に付ける。
 
+## 依存の更新（Renovate）
+
+`renovate.json` の設定で、Renovate が毎日（日本時間の 0〜9 時）更新を確かめて PR を作る。
+
+- メジャー以外の npm の更新は 1 本の PR にまとめ、CI（`.github/workflows/ci.yml` の型チェック・テスト・ビルド・E2E・依存の脆弱性の確認）が通ったら自動でマージする。マージされると、そのまま GitHub Pages に公開される
+- メジャー更新・mermaid・GitHub Actions は自動でマージしない（mermaid は SVG の見本を作り直す必要がある。AGENTS.md「mermaid の版」）
+- 公開されてから 3 日たっていない版は使わない（`minimumReleaseAge`。乗っ取られた版はたいてい数日のうちに見つかって取り下げられる）
+
+サプライチェーン攻撃への備え:
+
+- `.npmrc` の `ignore-scripts=true` で、依存パッケージのインストール時のスクリプトを動かさない
+- CI で `npm audit signatures` を走らせ、レジストリの署名と来歴を確かめる
+- GitHub Actions はタグではなくコミットの SHA で固定する（Renovate が SHA ごと更新する）
+- ワークフローの権限は既定で読み取りだけ。checkout は資格情報を残さない
+
+自動マージを CI で止めるには、GitHub 側で「Allow auto-merge」を有効にし、`main` のルールセットで CI の `check` と `dependency-review` を必須にしておく（Renovate の GitHub App も入れておく）。
+
 ## テスト
 
 | 種類 | 場所 | 内容 |

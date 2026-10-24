@@ -5,7 +5,7 @@
 ## コマンド
 
 ```sh
-npm install        # .npmrc の legacy-peer-deps=true が必要（npm 10 の依存解決が落ちるため。消さない）
+npm install        # .npmrc の legacy-peer-deps=true が必要（npm 10 の依存解決が落ちるため。消さない）。ignore-scripts=true も消さない（サプライチェーン攻撃への備え）
 npm run typecheck  # tsc（src・tests は tsconfig.json、e2e・perf は tsconfig.e2e.json）
 npm test           # Vitest（410 件前後。十数秒で終わる）
 npm run test:e2e   # Playwright。本番ビルドを作って vite preview（4173 番）で配信し、インストール済みの Chrome で動かす（動画の書き出しの e2e/video.spec.ts は、ほかが終わってから単独で走る）
@@ -20,6 +20,7 @@ npm run build      # 型チェック + 本番ビルド
 - **テキストが唯一の正。** 図のモデルを別に持たない。図からの操作は必ず `ChangeSpec` を作り、`applyDiagramChange()`（`src/core/editing.ts`）を通す。ここで `mermaid.parse` による検証をしてから適用するので、構文を壊す変更は履歴に残らない。
 - **書き換えるのは対象の範囲だけ。** 図からの操作で、対象の行以外（コメント・空行・インデント）を変えてはいけない。行を組み立て直すのは、範囲で置き換えられないときだけ。
 - **undo は自前の履歴ツリーだけ。** CodeMirror の `history()` 拡張を入れない（入れると undo が 2 系統になる）。
+- **依存とワークフローを緩めない。** 依存は版を固定する（`rangeStrategy: pin`）。インストール時のスクリプトが要る依存を足すときは、`ignore-scripts` を外さずに理由を確かめて相談する。ワークフローの `uses:` はコミットの SHA で書き（`@<sha> # vX.Y.Z`）、権限は要るジョブにだけ付ける。
 - **外部に通信しない。** CDN や外部 API を使わない（本番ビルドの CSP は `connect-src 'self'`）。図の内容をサーバーに送らない。
 - **mermaid は常に `securityLevel: 'strict'`。** 共有リンクの内容は信頼できない入力として扱う。
 - **パスを `/` 始まりで書かない。** GitHub Pages のサブパス（`/<リポジトリ名>/`）で動かすため、アプリの中から `public/` のファイルを参照するときは `import.meta.env.BASE_URL` を前に付ける。
