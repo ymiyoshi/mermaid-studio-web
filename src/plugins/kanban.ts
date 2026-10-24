@@ -1,5 +1,5 @@
 import type { DiagramPlugin, DiagramTarget, PropertyField, SourceRange } from './types';
-import { genericTargets, labelText } from './generic';
+import { labelText, withGeneric } from './generic';
 import { bodyLines, indentOf, insertLineAfter, uniqueId } from './source';
 import { addChild, deleteSubtree, moveSibling, parseOutline, type OutlineNode } from './outline';
 
@@ -39,7 +39,6 @@ const svgId = (el: Element) => el.id.replace(/^mmd-render-\d+-/, '');
 
 export const kanbanPlugin: DiagramPlugin = {
   type: 'kanban',
-  capabilities: ['label', 'add-node', 'delete', 'reorder', 'props'],
 
   mapTargets(svg, source) {
     const items = kanbanItems(source);
@@ -50,11 +49,7 @@ export const kanbanPlugin: DiagramPlugin = {
       const labelEl = g.querySelector('.cluster-label, .label, foreignObject, text') ?? g;
       mapped.push({ id: `kanban-${i}`, el: g, labelEl, label: labelText(labelEl), range: item.label, ref: { kind: item.kind, id: item.id } });
     });
-    return [...mapped, ...genericTargets(svg, source, mapped.map((x) => x.el))];
-  },
-
-  renameLabel(_source, target, value) {
-    return target.range ? { from: target.range.from, to: target.range.to, insert: value } : null;
+    return withGeneric(svg, source, mapped);
   },
 
   inspect(source, ref): PropertyField[] {

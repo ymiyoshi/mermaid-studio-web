@@ -1,28 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { Header } from './ui/Header';
 import { Sidebar } from './ui/Sidebar';
 import { EditorPane } from './ui/EditorPane';
 import { DiagramPane } from './ui/DiagramPane';
 import { HistoryPane } from './ui/HistoryPane';
-import { redo, undo, useSession } from './core/session';
-import { checkExternalChange, importFromDrop, openFile, saveFile } from './io/files';
-import { useIo } from './io/ioStore';
+import { useSession } from './core/session';
 import { ConflictBanner, IoDialogs } from './ui/IoDialogs';
 import { loadLayout, saveLayout, useLayout, type MobileTab } from './ui/layoutStore';
+import { useExternalChangeCheck, useFileDrop, useGlobalShortcuts, useMobile } from './ui/useAppEvents';
 import { t } from './i18n';
-
-const MOBILE_QUERY = '(max-width: 900px)';
-
-function useMobile() {
-  const [mobile, setMobile] = useState(() => matchMedia(MOBILE_QUERY).matches);
-  useEffect(() => {
-    const mq = matchMedia(MOBILE_QUERY);
-    const on = () => setMobile(mq.matches);
-    mq.addEventListener('change', on);
-    return () => mq.removeEventListener('change', on);
-  }, []);
-  return mobile;
-}
 
 const MOBILE_TABS: { id: MobileTab; label: () => string }[] = [
   { id: 'list', label: () => t('doc.list') },
@@ -42,76 +28,9 @@ export function App() {
   useEffect(() => {
     void loadLayout();
   }, []);
-
-  // ファイル操作のショートカットはどこにフォーカスがあっても効かせる
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
-      const k = e.key.toLowerCase();
-      if (k === 's') void saveFile({ saveAs: e.shiftKey });
-      else if (k === 'o' && !e.shiftKey) void openFile();
-      else if (k === 'e' && e.shiftKey) useIo.setState({ exportOpen: true });
-      else return;
-      e.preventDefault();
-    };
-    addEventListener('keydown', onKey, { capture: true });
-    return () => removeEventListener('keydown', onKey, { capture: true });
-  }, []);
-
-  // 結び付いたファイルが外部で変更されていないか、図を開いたときとフォーカスが戻ったときに調べる（§9.3）
-  const currentId = useSession((s) => s.current?.id);
-  useEffect(() => {
-    void checkExternalChange();
-  }, [currentId]);
-  useEffect(() => {
-    const check = () => void checkExternalChange();
-    addEventListener('focus', check);
-    return () => removeEventListener('focus', check);
-  }, []);
-
-  // ファイルのドラッグ＆ドロップで読み込む
-  const [dragging, setDragging] = useState(false);
-  useEffect(() => {
-    const hasFiles = (e: DragEvent) => !!e.dataTransfer && [...e.dataTransfer.types].includes('Files');
-    const over = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
-      e.preventDefault();
-      setDragging(true);
-    };
-    const leave = (e: DragEvent) => {
-      if (e.relatedTarget === null) setDragging(false);
-    };
-    const drop = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
-      e.preventDefault();
-      setDragging(false);
-      importFromDrop(e);
-    };
-    addEventListener('dragover', over);
-    addEventListener('dragleave', leave);
-    addEventListener('drop', drop);
-    return () => {
-      removeEventListener('dragover', over);
-      removeEventListener('dragleave', leave);
-      removeEventListener('drop', drop);
-    };
-  }, []);
-
-  // エディタの外にフォーカスがあるときも、同じ履歴で undo/redo する（§8.1）
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
-      const target = e.target instanceof Element ? e.target : null;
-      if (target?.closest('.cm-editor') || target?.matches('input, textarea, select')) return;
-      const k = e.key.toLowerCase();
-      if (k === 'z' && !e.shiftKey) undo();
-      else if ((k === 'z' && e.shiftKey) || k === 'y') redo();
-      else return;
-      e.preventDefault();
-    };
-    addEventListener('keydown', onKey);
-    return () => removeEventListener('keydown', onKey);
-  }, []);
+  useGlobalShortcuts();
+  useExternalChangeCheck();
+  const dragging = useFileDrop();
 
   if (!ready) return <div className="loading">{t('app.title')}…</div>;
 

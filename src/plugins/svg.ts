@@ -12,6 +12,22 @@ export function addHitArea(path: Element): Element {
   return hit;
 }
 
+/** エッジの線（data-id を持つ path）に対応するラベルの要素 */
+export function edgeLabelFor(svg: SVGSVGElement, path: Element): Element | null {
+  const id = path.getAttribute('data-id');
+  return id ? svg.querySelector(`g.edgeLabel [data-id="${CSS.escape(id)}"]`) : null;
+}
+
+/** エッジのラベルの要素を data-id ごとに集める（エッジごとに SVG 全体を探さないため） */
+export function edgeLabels(svg: SVGSVGElement): Map<string, Element> {
+  const out = new Map<string, Element>();
+  svg.querySelectorAll('g.edgeLabel [data-id]').forEach((el) => {
+    const id = el.getAttribute('data-id')!;
+    if (!out.has(id)) out.set(id, el);
+  });
+  return out;
+}
+
 /** "...-<prefix>-<ID>-<連番>" 形式の SVG の id から ID を取り出す */
 export function idFromSvg(el: Element, prefix: string): string | null {
   const m = new RegExp(`-${prefix}-(.+)-\\d+$`).exec(el.id);

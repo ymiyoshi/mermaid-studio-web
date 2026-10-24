@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { applyDiagramChange, revealRange, showToast, useSession } from '../core/session';
 import type { DiagramPlugin, ElementRef } from '../plugins/types';
 import { addRow, deleteRow, moveRow, setCell, tableRows, type TableDef, type TableRow } from '../plugins/table';
@@ -30,14 +30,19 @@ const KIND_LABEL: Record<string, string> = {
   column: '列',
   card: 'カード',
   item: '項目',
+  note: '注釈',
+  block: '枠',
+  section: '区切り',
+  subgraph: 'サブグラフ',
 };
 
-export function PropertyPanel({ plugin, selected, selectedFrom, editable }: Props) {
+// 図ビューはパンやドラッグのたびに描き直されるので、props が変わらないときは描き直さない
+export const PropertyPanel = memo(function PropertyPanel({ plugin, selected, selectedFrom, editable }: Props) {
   const text = useSession((s) => s.current?.text);
   const source = useMemo(() => text?.toString() ?? '', [text]);
   const tables = plugin.tables ?? [];
-  // 表で編集する図種は、表のタブを最初に開く
-  const [tab, setTab] = useState<string>(() => tables[0]?.id ?? 'props');
+  // 表で編集する図種は、表のタブを最初に開く（補助の表しか無い図種はプロパティのタブを開く）
+  const [tab, setTab] = useState<string>(() => tables.find((x) => !x.secondary)?.id ?? 'props');
   const activeTable = tables.find((x) => x.id === tab) ?? null;
 
   const fields = useMemo(() => plugin.inspect?.(source, selected) ?? [], [plugin, source, selected]);
@@ -84,7 +89,7 @@ export function PropertyPanel({ plugin, selected, selectedFrom, editable }: Prop
       </div>
     </div>
   );
-}
+});
 
 function TableEditor({ table, source, editable, selectedFrom }: { table: TableDef; source: string; editable: boolean; selectedFrom: number | null }) {
   const rows = useMemo(() => tableRows(source, table), [source, table]);

@@ -1,6 +1,6 @@
 import type { ChangeSpec } from '@codemirror/state';
 import type { DiagramPlugin, DiagramTarget, PropertyField, SourceRange } from './types';
-import { genericTargets, labelText } from './generic';
+import { labelText, withGeneric } from './generic';
 import { bodyLines, indentOf, insertLineAfter, rangeInInserted, uniqueId, type SourceLine } from './source';
 import { blockFrom, insertIntoBlock, lastMention, mentions, removeLine, removeLines, renameToken, topLevelEnd, VALID_NAME } from './lineOps';
 import { addHitArea, idFromSvg, matchInOrder } from './svg';
@@ -38,7 +38,10 @@ interface Relation {
   values: Record<string, string | undefined>;
 }
 
-/** ブロック（{ }）の外にある行かどうか */
+/**
+ * 各行のブロック（{ }）の深さ。class 図では { } はクラスの本体にしか出てこないので、文字単位で数える
+ * （ER 図は多重度の記号 |{ }o にも括弧が出てくるため、erDiagram.ts では別の数え方をしている）
+ */
 function topLevelLines(source: string): { line: SourceLine; depth: number }[] {
   let depth = 0;
   return bodyLines(source).body.map((line) => {
@@ -123,7 +126,6 @@ function setAnnotation(source: string, name: string, value: string): ChangeSpec 
 
 export const classPlugin: DiagramPlugin = {
   type: 'classDiagram',
-  capabilities: ['label', 'add-node', 'connect', 'delete', 'props'],
 
   mapTargets(svg, source) {
     const classes: DiagramTarget[] = [];
@@ -165,12 +167,7 @@ export const classPlugin: DiagramPlugin = {
         });
       });
     }
-    const mapped = [...classes, ...relTargets];
-    return [...mapped, ...genericTargets(svg, source, mapped.flatMap((x) => [x.el, ...(x.hits ?? [])]))];
-  },
-
-  renameLabel(_source, target, value) {
-    return target.range ? { from: target.range.from, to: target.range.to, insert: value } : null;
+    return withGeneric(svg, source, [...classes, ...relTargets]);
   },
 
   inspect(source, ref): PropertyField[] {

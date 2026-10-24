@@ -251,8 +251,8 @@ interface DiagramPlugin<CST, Id = string> {
 
 | 図種 | 主な編集手段 | Phase |
 |---|---|---|
-| flowchart / graph | ノード追加・削除、接続、ラベル、形、矢印の種類、subgraph への出し入れ、方向（TB/LR）、classDef/style | 1 |
-| sequenceDiagram | participant の追加と並べ替え（ドラッグ）、メッセージの追加・種類・ラベル、note、loop/alt/opt ブロック、activation | 2 |
+| flowchart / graph | ノード追加・削除、接続、ラベル、形、矢印の種類、subgraph への出し入れ、方向（TB/LR）、classDef/style。実装では、サブグラフは g.cluster の id で対応付け、所属は mermaid と同じ「先に閉じたサブグラフが取る」規則で求める。所属の変更は、今のサブグラフの中でノードだけの行で書かれているときに限る（エッジの一部なら変えられない）。エッジを足す・消す操作は linkStyle の番号を付け直す。click・エッジの ID とアニメーション（e1@-->）・読めない行はテキストで編集する | 1 |
+| sequenceDiagram | participant の追加と並べ替え（ドラッグ）、メッセージの追加・種類・ラベル、note、loop/alt/opt ブロック、activation。実装では、枠（loop / alt / opt / par / critical / break）は種類と条件で、注釈は本文で SVG と対応付ける。メッセージの上下の移動は同じ区切りの中だけで、枠の出入りは「枠で囲む」「枠を外す」で行う。box への所属、rect の色、単独の activate / deactivate の行、links / properties はテキストで編集する | 2 |
 | classDiagram | クラス追加、メンバーの追加と編集、関係（継承・合成など）と多重度 | 2 |
 | stateDiagram-v2 | 状態の追加、遷移、複合状態、開始と終了、note | 2 |
 | erDiagram | エンティティ、属性（表で編集）、リレーションのカーディナリティ | 2 |
@@ -399,7 +399,7 @@ interface HistoryTree { rootId: string; headId: string; nodes: Map<string, Histo
 |---|---|
 | 完全なクライアント動作 | 外部通信は初回の資産読み込みだけ。PWA でオフラインでも起動と編集が可能。mermaid の図種ごとの遅延読み込みチャンク、アイコンパック（architecture 図）、KaTeX の CSS/フォント（数式）も **すべて同梱してプリキャッシュ** する（CDN 参照はしない） |
 | 応答性 | 図の操作から検証後のテキスト反映まで 50ms 以内（うち op 計算は 16ms 以内、残りは `mermaid.parse` の検証）。テキスト入力から再描画（200 ノード規模の flowchart）が 300ms 以内 |
-| 起動 | 初回 3 秒以内（mermaid は図種ごとの遅延読み込みで分割） |
+| 起動 | 初回 3 秒以内（mermaid は本体も図種ごとの部分も遅延読み込み。画面とエディタは mermaid を待たずに出し、本体の読み込みは文書の読み込みと並行して始める） |
 | 対応ブラウザ | Chrome/Edge 最新 2 版：全機能。Firefox/Safari 最新 2 版：ファイル保存はフォールバック、他は全機能 |
 | セキュリティ | `securityLevel: 'strict'`、CSP（`default-src 'self'; script-src 'self'; connect-src 'self'`）。`connect-src` で外部への送信も塞ぐ。共有された内容は常に信頼しない |
 | アクセシビリティ | キーボードだけで主要な操作が可能。図の要素に `aria-label` を付ける |
@@ -425,7 +425,13 @@ Phase 0〜4 をすべて実装した。実装の中で決めたこと:
 - データ系の図種（pie・gantt など）の「視覚編集」は、行を表として編集するタブ（プロパティパネル）にした。セルの変更は値の範囲だけを書き換える。
 - エッジ・メッセージ・関係は、SVG の data-id / data-from / data-to にある端点でソースに対応付ける（描画の順番に頼らない）。state 図の遷移だけは端点の情報が無いため、順番で対応付ける。
 - `block` 図は汎用フォールバック（ラベル編集のみ）。`zenuml` は対象外。
-- 未着手: 英語の UI、Playwright の E2E テスト、§11 の性能目標の計測。
+- 未着手: 英語の UI、§11 の性能目標の計測。
+
+### 13.1 テストの現状（2026-10-24 時点）
+
+- Vitest 224 件（単体・SVG の対応付け・性質ベース・結合・コンポーネント）。行カバレッジ 68%（UI の部品は E2E で確かめる）。
+- Playwright の E2E 14 件。本番ビルド（CSP・PWA 込み）を、インストール済みの Chrome で動かす。既知の不具合 2 件は `test.fail` として記録している。
+- svgMapper の回帰テストは、ブラウザで描いた SVG の見本（`tests/fixtures/rendered-svg.json`）を使う。mermaid の版を上げたら作り直す。
 
 ---
 

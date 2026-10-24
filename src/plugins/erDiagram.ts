@@ -1,9 +1,9 @@
 import type { ChangeSpec } from '@codemirror/state';
 import type { DiagramPlugin, DiagramTarget, PropertyField } from './types';
-import { genericTargets, labelText } from './generic';
+import { labelText, withGeneric } from './generic';
 import { bodyLines, insertLineAfter, rangeInInserted, tokenRegex, uniqueId, type SourceLine } from './source';
 import { blockFrom, headOf, insertIntoBlock, maskQuotes, removeLine, removeLines, topLevelEnd, VALID_NAME } from './lineOps';
-import { addHitArea, idFromSvg, matchInOrder } from './svg';
+import { addHitArea, edgeLabelFor, idFromSvg, matchInOrder } from './svg';
 
 // erDiagram のプラグイン（設計書 §7.3 Phase 2）。
 // エンティティは SVG の id（…-entity-<名前>-<連番>）で、リレーションは SVG 上の順番で対応付ける。
@@ -96,7 +96,6 @@ function renameEntity(source: string, from: string, to: string): ChangeSpec[] | 
 
 export const erPlugin: DiagramPlugin = {
   type: 'er',
-  capabilities: ['label', 'add-node', 'connect', 'delete', 'props'],
 
   mapTargets(svg, source) {
     const entities: DiagramTarget[] = [];
@@ -120,8 +119,7 @@ export const erPlugin: DiagramPlugin = {
         const i = matched[k];
         if (i < 0) return;
         const r = rels[i];
-        const dataId = path.getAttribute('data-id') ?? '';
-        const label = dataId ? svg.querySelector(`g.edgeLabel [data-id="${CSS.escape(dataId)}"]`) : null;
+        const label = edgeLabelFor(svg, path);
         const lg = r.g.label!;
         // ラベルが引用符で囲まれていれば内側を編集する
         const quoted = r.v.label!.startsWith('"') && r.v.label!.endsWith('"');
@@ -136,12 +134,7 @@ export const erPlugin: DiagramPlugin = {
         });
       });
     }
-    const mapped = [...entities, ...relTargets];
-    return [...mapped, ...genericTargets(svg, source, mapped.flatMap((x) => [x.el, ...(x.hits ?? [])]))];
-  },
-
-  renameLabel(_source, target, value) {
-    return target.range ? { from: target.range.from, to: target.range.to, insert: value } : null;
+    return withGeneric(svg, source, [...entities, ...relTargets]);
   },
 
   inspect(source, ref): PropertyField[] {

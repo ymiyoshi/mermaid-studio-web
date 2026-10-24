@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeSpec } from '@codemirror/state';
 import { applyDiagramChange, useSession } from '../core/session';
+import { LatestValueApplier } from './latestApplier';
 import { t } from '../i18n';
 
 // プロパティパネルと表の入力欄。
@@ -33,48 +34,40 @@ export function FieldInput({ field, disabled, build, historyLabel, className }: 
   const focused = useRef(false);
   const composing = useRef(false);
   const session = useRef('');
-  const latest = useRef(field.value);
-  const busy = useRef(false);
   const buildRef = useRef(build);
   buildRef.current = build;
+  const labelRef = useRef(historyLabel);
+  labelRef.current = historyLabel;
+  const applier = useRef<LatestValueApplier | null>(null);
+  applier.current ??= new LatestValueApplier(
+    async (next) => {
+      // 直前の反映で文書が変わっているので、毎回いまのソースから変更を作り直す
+      const source = useSession.getState().current?.text.toString() ?? '';
+      const spec = buildRef.current(source, next);
+      if (!spec) {
+        setInvalid(true);
+        return false;
+      }
+      const r = await applyDiagramChange(spec, { label: labelRef.current, groupKey: `field:${session.current}` });
+      setInvalid(r === 'invalid');
+      return r === 'ok';
+    },
+    field.value,
+    () => composing.current,
+  );
 
   // フォーカスしていないときは、ソースの値に合わせる
   useEffect(() => {
     if (!focused.current) {
       setLocal(field.value);
-      latest.current = field.value;
+      applier.current!.reset(field.value);
       setInvalid(false);
     }
   }, [field.value]);
 
-  const sync = async () => {
-    if (busy.current || composing.current) return;
-    busy.current = true;
-    try {
-      let applied: string | null = null;
-      while (latest.current !== applied) {
-        const next: string = latest.current;
-        applied = next;
-        // 直前の反映で文書が変わっているので、毎回いまのソースから変更を作り直す
-        const source = useSession.getState().current?.text.toString() ?? '';
-        const spec = buildRef.current(source, next);
-        if (!spec) {
-          setInvalid(true);
-          break;
-        }
-        const r = await applyDiagramChange(spec, { label: historyLabel, groupKey: `field:${session.current}` });
-        setInvalid(r === 'invalid');
-        if (r !== 'ok') break;
-      }
-    } finally {
-      busy.current = false;
-    }
-  };
-
   const change = (v: string) => {
     setLocal(v);
-    latest.current = v;
-    if (!field.commitOnBlur || field.type === 'select') void sync();
+    if (!field.commitOnBlur || field.type === 'select') void applier.current!.push(v);
   };
 
   const common = {
@@ -88,11 +81,11 @@ export function FieldInput({ field, disabled, build, historyLabel, className }: 
     },
     onBlur: () => {
       focused.current = false;
-      if (field.commitOnBlur && latest.current !== field.value) {
-        void sync();
+      if (field.commitOnBlur && local !== field.value) {
+        void applier.current!.push(local);
         return;
       }
-      if (latest.current !== field.value && !invalid) return;
+      if (local !== field.value && !invalid) return;
       setLocal(field.value);
       setInvalid(false);
     },
@@ -118,8 +111,8 @@ export function FieldInput({ field, disabled, build, historyLabel, className }: 
       readOnly={field.readonly}
       onChange={(e) => {
         if (composing.current) {
+          // 変換中は値を覚えておくだけ（反映は確定してから）
           setLocal(e.target.value);
-          latest.current = e.target.value;
           return;
         }
         change(e.target.value);

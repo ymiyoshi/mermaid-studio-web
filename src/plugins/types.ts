@@ -4,8 +4,6 @@ import type { TableDef } from './table';
 
 // 設計書 §7.1: 図種プラグインのインターフェース。
 
-export type Capability = 'label' | 'add-node' | 'connect' | 'delete' | 'reorder' | 'props';
-
 export interface SourceRange {
   from: number;
   to: number;
@@ -32,6 +30,8 @@ export interface DiagramTarget {
   label: string;
   /** ラベルのソース上の範囲。特定できなければ null（その要素のラベルは図から編集できない） */
   range: SourceRange | null;
+  /** range が無いとき、ラベルを差し込める位置（A → A[ラベル] の [ と ] など） */
+  insertAt?: { at: number; prefix: string; suffix: string };
   /** 追加・接続・削除・プロパティの対象になる要素 */
   ref?: ElementRef;
 }
@@ -46,6 +46,8 @@ export interface ActionResult {
   focus?: ElementRef;
   /** ref の無い要素（メッセージなど）のときは、ラベルの開始位置で指定する */
   focusAt?: number;
+  /** 適用後に選択する要素（並べ替えで番号が変わる要素を選び続けるため） */
+  select?: ElementRef;
 }
 
 /** 図からの追加・接続・削除の操作 */
@@ -64,6 +66,8 @@ export interface DiagramAction {
   /** キーボードの割り当て（'Tab' / 'Delete' / 'Enter+Shift' など） */
   key?: string;
   danger?: boolean;
+  /** true なら要素の上のボタンには出さず、右クリックのメニューにだけ出す */
+  menuOnly?: boolean;
   run(source: string, refs: ElementRef[]): ActionResult | null;
 }
 
@@ -84,11 +88,8 @@ export interface PropertyField {
 export interface DiagramPlugin {
   /** mermaid.parse が返す diagramType。'*' は汎用フォールバック */
   type: string;
-  capabilities: Capability[];
   /** 描画済み SVG の要素をソースに対応付ける（§5.2） */
   mapTargets(svg: SVGSVGElement, source: string): DiagramTarget[];
-  /** ラベルの書き換えを TextEdit に変換する */
-  renameLabel(source: string, target: DiagramTarget, value: string): ChangeSpec | null;
   actions?: DiagramAction[];
   /** 要素（null なら図全体）のプロパティ */
   inspect?(source: string, ref: ElementRef | null): PropertyField[];
@@ -96,7 +97,22 @@ export interface DiagramPlugin {
   setProperty?(source: string, ref: ElementRef | null, fieldId: string, value: string): ChangeSpec | null;
   /** 行単位の表で編集できる部分（pie のスライス、gantt のタスクなど） */
   tables?: TableDef[];
+  /** ドラッグでの並べ替え（設計書 §6.3: 座標は保存せず、並び順の変更として扱う） */
+  reorder?: ReorderSpec;
 }
+
+export interface ReorderSpec {
+  /** ドラッグで並べ替えられる要素なら、動かす向き（x: 左右、y: 上下）。動かせなければ null */
+  axis(source: string, ref: ElementRef): 'x' | 'y' | null;
+  /** ref を target の前後に落とせるか（ドラッグ中の落とし先の候補を絞る） */
+  accepts(ref: ElementRef, target: ElementRef): boolean;
+  /** ref を target の前（before）か後ろへ動かす変更 */
+  move(source: string, ref: ElementRef, target: ElementRef, before: boolean): ActionResult | null;
+}
+
+/** 選択肢に今の値が無ければ足す（読めない値でも選択欄の表示が崩れないように） */
+export const withValue = (options: { value: string; label: string }[], value: string) =>
+  options.some((o) => o.value === value) ? options : [...options, { value, label: value }];
 
 export const sameRef = (a: ElementRef | undefined | null, b: ElementRef | undefined | null) =>
   !!a && !!b && a.kind === b.kind && a.id === b.id;

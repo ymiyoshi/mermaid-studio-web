@@ -27,6 +27,8 @@ export function Sidebar() {
   const docs = useSession((s) => s.docs);
   const currentId = useSession((s) => s.current?.id);
   const thumbs = useThumbs((s) => s.byDoc);
+  // 入力中は保存のたびに一覧が描き直されるので、SVG の符号化はサムネイルが変わったときだけにする
+  const thumbUrls = useMemo(() => Object.fromEntries(Object.entries(thumbs).map(([id, svg]) => [id, thumbSrc(svg)])), [thumbs]);
   const [query, setQuery] = useState('');
   const [tag, setTag] = useState<string | null>(null);
   const [sort, setSort] = useState<SortKey>('updated');
@@ -125,7 +127,7 @@ export function Sidebar() {
           <li key={d.id} className={`doc-item${d.id === currentId ? ' active' : ''}`}>
             <button className="doc-open" onClick={() => !showTrash && void openDoc(d.id)} disabled={showTrash}>
               <span className="doc-thumb" aria-hidden>
-                {thumbs[d.id] ? <img alt="" src={thumbSrc(thumbs[d.id])} loading="lazy" /> : <span>{firstLine(d.text).slice(0, 2)}</span>}
+                {thumbUrls[d.id] ? <img alt="" src={thumbUrls[d.id]} loading="lazy" /> : <span>{firstLine(d.text).slice(0, 2)}</span>}
               </span>
               <span className="doc-text">
                 <span className="doc-title">{d.title || t('doc.untitled')}</span>

@@ -34,9 +34,7 @@ const quoted = (_f: string, v: string) => quoteSafe(v);
 function dataPlugin(type: string, keywords: KeywordSpec[], tables: TableDef[]): DiagramPlugin {
   return {
     type,
-    capabilities: ['label', 'props'],
     mapTargets: (svg, source) => genericTargets(svg, source),
-    renameLabel: (_s, target, value) => (target.range ? { from: target.range.from, to: target.range.to, insert: value } : null),
     inspect: (source, ref) => (ref ? [] : keywordFields(source, keywords)),
     setProperty: (source, ref, field, value) => {
       if (ref) return null;

@@ -1,5 +1,5 @@
 import type { ChangeSpec } from '@codemirror/state';
-import { bodyLines, indentOf, isComment, tokenRegex, type SourceLine } from './source';
+import { bodyLines, indentOf, insertLineAfter, isComment, tokenRegex, type SourceLine } from './source';
 
 // 行単位の図種（class / state / ER など）で共通に使う書き換え。
 
@@ -94,6 +94,12 @@ export function topLevelEnd(source: string, fallbackIndent = '    ') {
   const { header, body } = bodyLines(source);
   const indent = body[0] ? indentOf(body[0].text) || fallbackIndent : fallbackIndent;
   return { after: body.at(-1) ?? header, indent };
+}
+
+/** 図の最後（ブロックの外のトップレベル）に 1 行足す */
+export function appendTopLevel(source: string, text: string) {
+  const { after, indent } = topLevelEnd(source);
+  return insertLineAfter(source, after, indent + text);
 }
 
 export const VALID_NAME = /^[\p{L}\p{N}_][\p{L}\p{N}_-]*$/u;

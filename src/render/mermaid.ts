@@ -1,8 +1,9 @@
-import mermaid from 'mermaid';
+import type { Mermaid } from 'mermaid';
 
 // 設計書 §5: mermaid.js による検証と描画。
 // securityLevel は常に 'strict'。mermaid の既定の `secure` 設定により、
 // frontmatter や %%{init}%% から securityLevel を上書きすることはできない（§9.4）。
+// mermaid 本体は大きい（1MB 超）ので、起動を待たせないよう動的に読み込む。
 
 export type Theme = 'default' | 'dark' | 'forest' | 'neutral';
 
@@ -14,7 +15,10 @@ export interface ParseError {
 
 export type ValidateResult = { ok: true; diagramType: string | null } | { ok: false; error: ParseError };
 
-let currentTheme: Theme | null = null;
+/** 使いたいテーマ（configureMermaid で決める）と、mermaid に設定済みのテーマ */
+let wantedTheme: Theme | null = null;
+let appliedTheme: Theme | null = null;
+let loading: Promise<Mermaid> | null = null;
 
 function baseConfig(theme: Theme, htmlLabels: boolean) {
   return {
@@ -28,9 +32,31 @@ function baseConfig(theme: Theme, htmlLabels: boolean) {
 }
 
 export function configureMermaid(theme: Theme) {
-  if (theme === currentTheme) return;
-  currentTheme = theme;
-  mermaid.initialize(baseConfig(theme, true));
+  wantedTheme = theme;
+}
+
+/** mermaid を読み込み（初回だけ）、使いたいテーマを反映して返す */
+async function loadMermaid(): Promise<Mermaid> {
+  // 読み込みに失敗したら、次の呼び出しで読み込み直す
+  loading ??= import('mermaid').then(
+    (m) => m.default,
+    (e) => {
+      loading = null;
+      throw e;
+    },
+  );
+  const mermaid = await loading;
+  if (wantedTheme !== null && wantedTheme !== appliedTheme) {
+    appliedTheme = wantedTheme;
+    mermaid.initialize(baseConfig(wantedTheme, true));
+  }
+  return mermaid;
+}
+
+/** 起動直後に読み込みを始めておく（最初の描画を遅らせないため） */
+export function preloadMermaid() {
+  // 失敗は、実際に検証・描画するときにエラーとして出す
+  loadMermaid().catch(() => {});
 }
 
 function lineFromOffset(text: string, offset: number): number {
@@ -69,14 +95,28 @@ export function toParseError(e: unknown, text: string): ParseError {
   return { message, line };
 }
 
+/** 直前に検証したテキストと結果（図からの操作で検証したテキストを、描画の前にもう一度読まないため） */
+let lastValidated: { text: string; result: ValidateResult } | null = null;
+
 export async function validate(text: string): Promise<ValidateResult> {
   if (text.trim() === '') return { ok: true, diagramType: null };
+  if (lastValidated?.text === text) return lastValidated.result;
+  let mermaid: Mermaid;
   try {
-    const r = await mermaid.parse(text);
-    return { ok: true, diagramType: r ? r.diagramType : null };
+    mermaid = await loadMermaid();
   } catch (e) {
+    // 読み込みの失敗は覚えない（次の検証で読み込み直す）
     return { ok: false, error: toParseError(e, text) };
   }
+  let result: ValidateResult;
+  try {
+    const r = await mermaid.parse(text);
+    result = { ok: true, diagramType: r ? r.diagramType : null };
+  } catch (e) {
+    result = { ok: false, error: toParseError(e, text) };
+  }
+  lastValidated = { text, result };
+  return result;
 }
 
 // mermaid.render は同時に複数呼ぶと干渉するので直列化する
@@ -95,16 +135,25 @@ export interface RenderOptions {
 
 export function renderSvg(text: string, opts: RenderOptions = {}): Promise<RenderResult> {
   const id = `mmd-render-${++renderSeq}`;
-  const override = opts.htmlLabels === false && currentTheme !== null;
   const job = queue.then(async (): Promise<RenderResult> => {
-    if (override) mermaid.initialize(baseConfig(currentTheme!, false));
+    // 失敗しても queue を止めないよう、読み込みの失敗もエラーとして返す
+    let mermaid: Mermaid;
+    try {
+      mermaid = await loadMermaid();
+    } catch (e) {
+      return { ok: false, error: toParseError(e, text) };
+    }
+    const theme = appliedTheme;
+    const override = opts.htmlLabels === false && theme !== null;
+    if (override) mermaid.initialize(baseConfig(theme, false));
     try {
       const { svg } = await mermaid.render(id, text);
       return { ok: true, svg };
     } catch (e) {
       return { ok: false, error: toParseError(e, text) };
     } finally {
-      if (override) mermaid.initialize(baseConfig(currentTheme!, true));
+      // 描画中にテーマが変わっていれば、変わった後のテーマに戻す
+      if (override) mermaid.initialize(baseConfig(appliedTheme!, true));
       // 失敗時に mermaid が残す一時要素を片付ける
       document.getElementById(id)?.remove();
       document.getElementById(`d${id}`)?.remove();

@@ -1,5 +1,5 @@
 import type { ChangeSpec } from '@codemirror/state';
-import { bodyLines, indentOf, insertLineAfter, type SourceLine } from './source';
+import { bodyLines, escapeRe, indentOf, insertLineAfter, type SourceLine } from './source';
 import { removeLine } from './lineOps';
 
 // 「title 売上」「dateFormat YYYY-MM-DD」のような、キーワードと値の 1 行の設定。
@@ -23,8 +23,6 @@ interface Found {
   to: number;
   value: string;
 }
-
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export function findKeyword(source: string, spec: KeywordSpec): Found | null {
   const { header, body } = bodyLines(source);

@@ -4,12 +4,21 @@ import {
   nodeRefs,
   parseFlowchart,
   SHAPE_CHOICES,
+  CLASSIC_TO_META,
+  META_SHAPES,
+  metaShapeValue,
+  shapeName,
   type FlowDoc,
   type Link,
   type NodeRef,
   type Statement,
+  type FlowEdge,
+  isDefinition,
+  statementText,
+  VALID_ID,
 } from './flowchartSyntax';
-import { indentOf, tokenRegex, bodyLines } from './source';
+import { applySpec, indentOf, tokenRegex, bodyLines } from './source';
+import { removeLine } from './lineOps';
 
 // flowchart の削除・形・矢印・方向の変更。変わるのは対象の文だけで、他の行には触れない（§6.2）。
 
@@ -32,7 +41,7 @@ function referencedElsewhere(doc: FlowDoc, id: string, st: Statement): boolean {
 function partText(source: string, doc: FlowDoc, st: Statement, part: Part, originals: NodeRef[][]): string | null {
   if (part.links.length === 0) {
     // ノードだけが残った: 形の定義があるか、他に出てこないノードだけを残す
-    const keep = part.groups[0].filter((r) => r.shape || !referencedElsewhere(doc, r.id, st));
+    const keep = part.groups[0].filter((r) => isDefinition(r) || !referencedElsewhere(doc, r.id, st));
     if (keep.length === 0) return null;
     return keep.map((r) => source.slice(r.from, r.to)).join(' & ');
   }
@@ -45,11 +54,8 @@ function partText(source: string, doc: FlowDoc, st: Statement, part: Part, origi
 
 /** 文を書き換える変更。parts が空なら文を（行ごと）消す */
 function replaceStatement(source: string, st: Statement, texts: string[]): ChangeSpec {
-  const wholeLine = st.line.text.trim().replace(/;$/, '').trim() === source.slice(st.from, st.to).trim();
-  if (texts.length === 0 && wholeLine) {
-    if (st.line.to < source.length) return { from: st.line.from, to: st.line.to + 1 };
-    return { from: Math.max(0, st.line.from - 1), to: st.line.to };
-  }
+  const wholeLine = statementText(st.line.text) === source.slice(st.from, st.to).trim();
+  if (texts.length === 0 && wholeLine) return removeLine(source, st.line);
   const sep = wholeLine ? '\n' + indentOf(st.line.text) : '; ';
   return { from: st.from, to: st.to, insert: texts.join(sep) };
 }
@@ -81,8 +87,7 @@ function styleLineChanges(source: string, id: string): ChangeSpec[] {
   const out: ChangeSpec[] = [];
   const token = tokenRegex(id);
   for (const line of bodyLines(source).body) {
-    const remove = () =>
-      out.push(line.to < source.length ? { from: line.from, to: line.to + 1 } : { from: Math.max(0, line.from - 1), to: line.to });
+    const remove = () => out.push(removeLine(source, line));
     const style = /^\s*(style|click)\s+(\S+)/.exec(line.text);
     if (style && style[2] === id) {
       remove();
@@ -128,31 +133,96 @@ export function deleteEdge(source: string, index: number): ChangeSpec | null {
     return replaceStatement(source, st, texts);
   }
   // & でまとめたリンク: その文のエッジを 1 本ずつの文に書き直す
+  return rewriteEdges(source, doc, st, (e) => (e.index === index ? null : e));
+}
+
+/**
+ * 文のエッジを 1 本ずつの文に書き直す。map が null を返したエッジは消し、端点を返したらその端点でつなぐ。
+ * エッジの順番は変えないので、他のエッジの番号（linkStyle が指すもの）はずれない
+ */
+function rewriteEdges(source: string, doc: FlowDoc, st: Statement, map: (e: FlowEdge) => { from: string; to: string } | null): ChangeSpec {
   const seen = new Set<string>();
-  const nodeText = (r: NodeRef) => {
-    if (seen.has(r.id)) return r.id;
-    seen.add(r.id);
+  // ノードの定義（形やラベル）は最初に出てくるところに 1 度だけ書く
+  const nodeText = (e: FlowEdge, id: string) => {
+    const r = st.groups[e.link].find((x) => x.id === id) ?? st.groups[e.link + 1].find((x) => x.id === id);
+    if (!r || seen.has(id)) return id;
+    seen.add(id);
     return source.slice(r.from, r.to);
   };
   const texts: string[] = [];
-  const own = doc.edges.filter((e) => e.statement === st);
-  for (const e of own) {
-    if (e.index === index) continue;
-    const a = st.groups[e.link].find((r) => r.id === e.from)!;
-    const b = st.groups[e.link + 1].find((r) => r.id === e.to)!;
+  for (const e of doc.edges.filter((x) => x.statement === st)) {
+    const ends = map(e);
+    if (!ends) continue;
     const l = st.links[e.link];
-    texts.push(`${nodeText(a)} ${source.slice(l.from, l.to)} ${nodeText(b)}`);
+    texts.push(`${nodeText(e, ends.from)} ${source.slice(l.from, l.to)} ${nodeText(e, ends.to)}`);
   }
   // どのエッジにも残らなかったノードの定義は残す
-  for (const g of st.groups) for (const r of g) if (!seen.has(r.id) && (r.shape || !referencedElsewhere(doc, r.id, st))) texts.push(nodeText(r));
+  for (const g of st.groups) for (const r of g) if (!seen.has(r.id) && (isDefinition(r) || !referencedElsewhere(doc, r.id, st))) texts.push(source.slice(r.from, r.to));
   return replaceStatement(source, st, texts);
 }
 
+/** エッジの端点を変える（from / to のどちらか、または両方を入れ替える）。エッジの番号は変わらない */
+export function reconnectEdge(source: string, index: number, ends: { from: string; to: string }): ChangeSpec | null {
+  const doc = parseFlowchart(source);
+  const edge = doc.edges[index];
+  if (!edge || !VALID_ID.test(ends.from) || !VALID_ID.test(ends.to)) return null;
+  if (ends.from === edge.from && ends.to === edge.to) return null;
+  const st = edge.statement;
+  const i = edge.link;
+  const a = st.groups[i];
+  const b = st.groups[i + 1];
+  const single = a.length === 1 && b.length === 1;
+  // 向きを入れ替えるだけの 1 本の文（A --> B）: 両端の参照をそのまま入れ替える
+  if (single && st.links.length === 1 && ends.from === edge.to && ends.to === edge.from) {
+    return [
+      { from: a[0].from, to: a[0].to, insert: source.slice(b[0].from, b[0].to) },
+      { from: b[0].from, to: b[0].to, insert: source.slice(a[0].from, a[0].to) },
+    ];
+  }
+  // 端の参照（形の定義が無く、他のリンクと共有していない）なら ID だけを書き換える
+  const plainEnd = (g: NodeRef[], k: number) => g.length === 1 && !isDefinition(g[0]) && (k === 0 || k === st.groups.length - 1);
+  if (single && (ends.from === edge.from || plainEnd(a, i)) && (ends.to === edge.to || plainEnd(b, i + 1))) {
+    const out: ChangeSpec[] = [];
+    if (ends.from !== edge.from) out.push({ from: a[0].from, to: a[0].idTo, insert: ends.from });
+    if (ends.to !== edge.to) out.push({ from: b[0].from, to: b[0].idTo, insert: ends.to });
+    return out;
+  }
+  return rewriteEdges(source, doc, st, (e) => (e.index === index ? ends : e));
+}
+
+/** エッジの間にノードを挟む（A --> B を A --> N[ラベル] --> B に） */
+export function insertNodeOnEdge(source: string, index: number, node: string): { from: number; insert: string } | null {
+  const doc = parseFlowchart(source);
+  const edge = doc.edges[index];
+  if (!edge) return null;
+  const l = edge.statement.links[edge.link];
+  return { from: l.to, insert: ` ${node} ${l.arrow}` };
+}
+
+/**
+ * ノードの形を変える。shape は括弧の形の名前か「@名前」（新しい書き方でしか書けない形）。
+ * 新しい書き方（@{ … }）のノードは shape: の値だけを変え、括弧の形のノードは括弧だけを変える。
+ * 括弧で書けない形を選んだときだけ、@{ shape: …, label: "…" } に書き直す
+ */
 export function setShape(source: string, id: string, shape: string): ChangeSpec[] | null {
+  const metaName = shape.startsWith('@') ? shape.slice(1) : CLASSIC_TO_META[shape];
   const choice = SHAPE_CHOICES.find((s) => s.name === shape);
-  if (!choice) return null;
+  if (!metaName || (!choice && !META_SHAPES.some((m) => m.name === metaName))) return null;
   const doc = parseFlowchart(source);
   const def = nodeDefinition(doc, id);
+  if (def?.meta) {
+    const m = def.meta;
+    if (m.shape) return [{ from: m.shape.from, to: m.shape.to, insert: metaName }];
+    return [{ from: m.from + 2, insert: ` shape: ${metaName},` }];
+  }
+  if (!choice) {
+    // 括弧の形から新しい書き方へ
+    const label = def?.shape ? source.slice(def.shape.labelFrom, def.shape.labelTo) : id;
+    const meta = `@{ shape: ${metaName}, label: "${label.replace(/"/g, '#quot;')}" }`;
+    if (def?.shape) return [{ from: def.shape.from, to: def.shape.to, insert: meta }];
+    const first = nodeRefs(doc, id)[0];
+    return first ? [{ from: first.ref.idTo, insert: meta }] : null;
+  }
   if (def?.shape) {
     const s = def.shape;
     return [
@@ -163,6 +233,49 @@ export function setShape(source: string, id: string, shape: string): ChangeSpec[
   const first = nodeRefs(doc, id)[0];
   if (!first) return null;
   return [{ from: first.ref.idTo, insert: `${choice.open}${id}${choice.close}` }];
+}
+
+/** ノードの形の選択肢の値 */
+export function shapeValue(source: string, id: string): string {
+  const def = nodeDefinition(parseFlowchart(source), id);
+  if (def?.meta) return def.meta.shape ? metaShapeValue(def.meta.shape.value) : 'rect';
+  return def?.shape ? shapeName(def.shape) : 'rect';
+}
+
+// ---- 線の種類と長さ ----
+
+const ARROW_PARTS = /^([<ox]?)(-+|=+|-\.+-|~+)([>ox]?)$/;
+
+/** 矢印を、種類（長さ 1 のときの書き方）と長さに分ける。読めなければ null */
+export function arrowParts(arrow: string): { kind: string; length: number } | null {
+  const m = ARROW_PARTS.exec(arrow);
+  if (!m) return null;
+  const [, left, body, right] = m;
+  const head = right !== '';
+  let length: number;
+  let base: string;
+  if (body.startsWith('-.')) {
+    length = body.length - 2;
+    base = '-.-';
+  } else if (body[0] === '~') {
+    length = body.length - 2;
+    base = '~~~';
+  } else {
+    length = body.length - (head ? 1 : 2);
+    base = body[0].repeat(head ? 2 : 3);
+  }
+  if (length < 1) return null;
+  return { kind: left + base + right, length };
+}
+
+/** 種類（長さ 1 の書き方）と長さから矢印を作る */
+export function buildArrow(kind: string, length: number): string {
+  const m = ARROW_PARTS.exec(kind);
+  if (!m || length < 1) return kind;
+  const [, left, body, right] = m;
+  const extra = length - 1;
+  if (body.startsWith('-.')) return `${left}-${'.'.repeat(1 + extra)}-${right}`;
+  return `${left}${body}${body[0].repeat(extra)}${right}`;
 }
 
 export function setArrow(source: string, index: number, arrow: string): ChangeSpec | null {
@@ -196,6 +309,40 @@ export function edgeInfo(source: string, index: number) {
   return { ...edge, arrow: l.arrow, label: l.label ? source.slice(l.label.from, l.label.to) : '', labelRange: l.label };
 }
 
+/**
+ * エッジを足す・消す変更に、linkStyle の番号の付け直しを加える。
+ * linkStyle はエッジを出てくる順の番号で指すので、途中に足したり消したりすると別のエッジを指してしまう
+ * （範囲外の番号は構文エラーになる）。変更の前後のエッジを端点で出てくる順に突き合わせて番号を直す
+ */
+export function withLinkStyles(source: string, change: ChangeSpec): ChangeSpec {
+  const doc = parseFlowchart(source);
+  if (doc.linkStyles.length === 0) return change;
+  const after = applySpec(source, change);
+  const next = parseFlowchart(after).edges;
+  const map = new Map<number, number>();
+  let j = 0;
+  for (const e of doc.edges) {
+    let k = j;
+    while (k < next.length && !(next[k].from === e.from && next[k].to === e.to)) k++;
+    if (k < next.length) {
+      map.set(e.index, k);
+      j = k + 1;
+    }
+  }
+  const extra: ChangeSpec[] = [];
+  for (const ls of doc.linkStyles) {
+    if (ls.indices.value === 'default') continue;
+    const old = ls.indices.value.split(',');
+    const renumbered = old.flatMap((x) => {
+      const k = map.get(Number(x));
+      return /^\d+$/.test(x) && k !== undefined ? [String(k)] : [];
+    });
+    if (renumbered.join(',') === old.join(',')) continue;
+    extra.push(renumbered.length === 0 ? removeLine(source, ls.line) : { from: ls.indices.from, to: ls.indices.to, insert: renumbered.join(',') });
+  }
+  return extra.length ? [change, ...extra] : change;
+}
+
 const HEADER = /^(\s*(?:flowchart|graph))(?:([ \t]+)(TB|TD|BT|RL|LR))?/;
 
 export function getDirection(source: string): string {
@@ -214,7 +361,6 @@ export function setDirection(source: string, dir: string): ChangeSpec | null {
   return { from: h.from + m[1].length, insert: ' ' + dir };
 }
 
-const VALID_ID = /^[\p{L}\p{N}_](?:[\p{L}\p{N}_.]|-(?=[\p{L}\p{N}_]))*$/u;
 
 /** ノードの ID を変える。文の中の参照と、class / style / click の行をすべて書き換える */
 export function renameNode(source: string, from: string, to: string): ChangeSpec[] | null {

@@ -1,5 +1,6 @@
 import type { ChangeSpec } from '@codemirror/state';
 import { bodyLines, indentOf, type SourceLine } from './source';
+import { removeLine } from './lineOps';
 
 // 設計書 §7.3: データ系の図種（pie / gantt / sankey など）は、行を表として編集する。
 // 1 行 = 1 つの文。セルを変えると、その値の範囲だけを書き換える（行の他の部分や書式は変えない）。
@@ -39,6 +40,8 @@ export interface TableDef {
   id: string;
   title: string;
   schemas: RowSchema[];
+  /** true なら補助の表（最初に開くタブにしない。要素のプロパティが主の図種で使う） */
+  secondary?: boolean;
 }
 
 export interface TableRow {
@@ -95,9 +98,7 @@ export function setCell(row: TableRow, field: string, value: string): ChangeSpec
 }
 
 export function deleteRow(source: string, row: TableRow): ChangeSpec {
-  // 次の行頭までを消す（最終行なら直前の改行を消す）
-  if (row.line.to < source.length) return { from: row.line.from, to: row.line.to + 1 };
-  return { from: Math.max(0, row.line.from - 1), to: row.line.to };
+  return removeLine(source, row.line);
 }
 
 /** after の後ろ（null なら表の最後の行の後ろ、表が空なら図種の宣言行の後ろ）に行を足す */

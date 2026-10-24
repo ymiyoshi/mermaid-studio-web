@@ -1,6 +1,6 @@
 import type { ChangeSpec } from '@codemirror/state';
 import type { DiagramPlugin, DiagramTarget, PropertyField, SourceRange } from './types';
-import { genericTargets, labelText } from './generic';
+import { labelText, withGeneric } from './generic';
 import { indentOf, uniqueId } from './source';
 import { addChild, addSibling, deleteSubtree, moveSibling, parseOutline, type OutlineNode } from './outline';
 
@@ -77,7 +77,6 @@ function setShape(source: string, m: MindNode, shape: string): ChangeSpec | null
 
 export const mindmapPlugin: DiagramPlugin = {
   type: 'mindmap',
-  capabilities: ['label', 'add-node', 'delete', 'reorder', 'props'],
 
   mapTargets(svg, source) {
     const nodes = mindNodes(source);
@@ -89,11 +88,7 @@ export const mindmapPlugin: DiagramPlugin = {
         mapped.push({ id: `topic-${i}`, el: g, labelEl, label: labelText(labelEl), range: nodes[i].label, ref: { kind: 'topic', id: String(i) } });
       });
     }
-    return [...mapped, ...genericTargets(svg, source, mapped.map((x) => x.el))];
-  },
-
-  renameLabel(_source, target, value) {
-    return target.range ? { from: target.range.from, to: target.range.to, insert: value } : null;
+    return withGeneric(svg, source, mapped);
   },
 
   inspect(source, ref): PropertyField[] {

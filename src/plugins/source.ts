@@ -1,3 +1,5 @@
+import { ChangeSet, Text, type ChangeSpec } from '@codemirror/state';
+
 // 図種プラグインが共通で使う、ソーステキストの行単位の操作。
 // 変更は「行を 1 行差し込む」だけにして、既存の行（コメント・空行・インデント）には触れない（§6.2）。
 
@@ -38,7 +40,10 @@ export function bodyLines(source: string): { header: SourceLine | null; body: So
   return { header, body };
 }
 
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** 変更を当てた後のソース（変更の前後を比べる操作で使う） */
+export const applySpec = (source: string, spec: ChangeSpec) => ChangeSet.of(spec, source.length).apply(Text.of(source.split('\n'))).toString();
 
 /** id がトークンとして現れるか（前後が英数字・_ でない） */
 export function tokenRegex(id: string, flags = 'u'): RegExp {

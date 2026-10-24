@@ -1,9 +1,9 @@
 import type { ChangeSpec } from '@codemirror/state';
 import type { DiagramPlugin, DiagramTarget, PropertyField, SourceRange } from './types';
-import { genericTargets, labelText } from './generic';
+import { labelText, withGeneric } from './generic';
 import { bodyLines, indentOf, insertLineAfter, rangeInInserted, uniqueId, type SourceLine } from './source';
 import { blockFrom, lastMention, mentions, removeLine, removeLines, renameToken, topLevelEnd, VALID_NAME } from './lineOps';
-import { addHitArea, idFromSvg } from './svg';
+import { addHitArea, edgeLabelFor, idFromSvg } from './svg';
 
 // stateDiagram-v2 のプラグイン（設計書 §7.3 Phase 2）。
 // 状態は SVG の id（…-state-<名前>-<連番>）で、遷移は SVG 上の順番（= ソースの遷移の行の順番）で対応付ける。
@@ -82,7 +82,6 @@ function placeAfter(source: string, name: string) {
 
 export const statePlugin: DiagramPlugin = {
   type: 'stateDiagram',
-  capabilities: ['label', 'add-node', 'connect', 'delete', 'props'],
 
   mapTargets(svg, source) {
     const states: DiagramTarget[] = [];
@@ -105,8 +104,7 @@ export const statePlugin: DiagramPlugin = {
     const edges: DiagramTarget[] = [];
     if (paths.length === trs.length) {
       paths.forEach((path, i) => {
-        const dataId = path.getAttribute('data-id') ?? '';
-        const label = dataId ? svg.querySelector(`g.edgeLabel [data-id="${CSS.escape(dataId)}"]`) : null;
+        const label = edgeLabelFor(svg, path);
         edges.push({
           id: `transition-${i}`,
           el: path,
@@ -118,12 +116,7 @@ export const statePlugin: DiagramPlugin = {
         });
       });
     }
-    const mapped = [...states, ...edges];
-    return [...mapped, ...genericTargets(svg, source, mapped.flatMap((x) => [x.el, ...(x.hits ?? [])]))];
-  },
-
-  renameLabel(_source, target, value) {
-    return target.range ? { from: target.range.from, to: target.range.to, insert: value } : null;
+    return withGeneric(svg, source, [...states, ...edges]);
   },
 
   inspect(source, ref): PropertyField[] {

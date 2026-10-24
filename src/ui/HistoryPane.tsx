@@ -8,6 +8,10 @@ import { t } from '../i18n';
 const ROW_H = 30;
 const LANE_W = 14;
 const PREVIEW_DELAY_MS = 350;
+/** 見えている範囲の上下に余分に描く行の数 */
+const OVERSCAN = 10;
+/** 高さを測れないとき（描画前・テスト環境）に仮定する表示領域の高さ */
+const FALLBACK_HEIGHT = 800;
 
 const ORIGIN_ICON: Record<Origin, string> = {
   init: '★',
@@ -99,6 +103,21 @@ export function HistoryPane() {
   const [confirmPrune, setConfirmPrune] = useState(false);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  // 長い履歴でも入力のたびに全行を描き直さないよう、見えている行だけを描く
+  const [viewport, setViewport] = useState({ top: 0, height: FALLBACK_HEIGHT });
+  const measure = () => {
+    const el = listRef.current;
+    if (!el) return;
+    const next = { top: el.scrollTop, height: el.clientHeight || FALLBACK_HEIGHT };
+    setViewport((v) => (v.top === next.top && v.height === next.height ? v : next));
+  };
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [current !== null]);
 
   const layout = useMemo(() => {
     if (!current) return null;
@@ -128,6 +147,11 @@ export function HistoryPane() {
   const cy = (row: number) => row * ROW_H + ROW_H / 2;
   const total = current.tree.nodes.size - 1;
   const branches = [...current.tree.nodes.values()].filter((n) => n.children.length > 1).length;
+  // 短い履歴の図に切り替えた直後は、スクロール位置が古いことがあるので行数に収める
+  const top = Math.min(viewport.top, Math.max(0, layout.rows.length * ROW_H - viewport.height));
+  const first = Math.max(0, Math.floor(top / ROW_H) - OVERSCAN);
+  const last = Math.min(layout.rows.length - 1, Math.ceil((top + viewport.height) / ROW_H) + OVERSCAN);
+  const shown = layout.rows.slice(first, last + 1).map((r, k) => ({ r, i: first + k }));
 
   const hover = (node: HistoryNode, el: HTMLElement) => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
@@ -176,10 +200,18 @@ export function HistoryPane() {
           </div>
         </div>
       )}
-      <div className="history-list" ref={listRef} onScroll={leave}>
+      <div
+        className="history-list"
+        ref={listRef}
+        onScroll={() => {
+          leave();
+          measure();
+        }}
+      >
         <div className="history-inner" style={{ height: layout.rows.length * ROW_H }}>
           <svg className="history-graph" width={width} height={layout.rows.length * ROW_H} aria-hidden>
             {layout.edges.map((e, i) => {
+              if (e.toRow < first || e.fromRow > last) return null;
               const x1 = cx(e.fromLane);
               const y1 = cy(e.fromRow);
               const x2 = cx(e.toLane);
@@ -190,7 +222,7 @@ export function HistoryPane() {
                   : `M${x1},${y1} C${x1},${y1 + ROW_H * 0.8} ${x2},${y1 + ROW_H * 0.2} ${x2},${y1 + ROW_H} L${x2},${y2}`;
               return <path key={i} d={d} className="history-edge" />;
             })}
-            {layout.rows.map((r, i) =>
+            {shown.map(({ r, i }) =>
               r.kind === 'node' ? (
                 <circle
                   key={r.node.id}
@@ -204,7 +236,7 @@ export function HistoryPane() {
               ),
             )}
           </svg>
-          {layout.rows.map((r, i) =>
+          {shown.map(({ r, i }) =>
             r.kind === 'node' ? (
               <div
                 key={r.node.id}

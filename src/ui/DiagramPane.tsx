@@ -1,28 +1,14 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useRender } from '../render/pipeline';
 import { applyDiagramChange, revealRange, showToast, useSession } from '../core/session';
 import { pluginFor } from '../plugins/registry';
-import { refKey, sameRef, type DiagramAction, type DiagramTarget, type ElementRef } from '../plugins/types';
+import { refKey, sameRef, type ActionResult, type DiagramAction, type DiagramTarget, type ElementRef } from '../plugins/types';
 import { InlineLabelEditor, type LabelSession } from './InlineLabelEditor';
 import { PropertyPanel } from './PropertyPanel';
 import { getSetting, putSetting } from '../storage/db';
+import { DRAG_THRESHOLD_PX, fixSvgSize, rectIn, unionRect, usePanZoom, type Rect, type ViewBox } from './usePanZoom';
+import { contains, findDrop, markContainers, type DropCandidate, type DropSpot } from './reorderDrop';
 import { t } from '../i18n';
-
-interface ViewBox {
-  scale: number;
-  x: number;
-  y: number;
-}
-
-interface Rect {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-}
-
-const MIN_SCALE = 0.1;
-const MAX_SCALE = 8;
 
 /** 再描画をまたいで同じ要素を指すためのキー。意味上の参照があればそれを使う */
 const keyOf = (x: DiagramTarget) => (x.ref ? `e:${refKey(x.ref)}` : x.id);
@@ -30,14 +16,22 @@ const keyOf = (x: DiagramTarget) => (x.ref ? `e:${refKey(x.ref)}` : x.id);
 /** 操作が要素に使えるか */
 const applies = (a: DiagramAction, ref: ElementRef | undefined) => !!ref && (a.appliesTo ?? ['node']).includes(ref.kind);
 
-/** mermaid の SVG は幅 100% で出力されるので、拡大縮小のために本来の大きさに固定する */
-function fixSvgSize(svg: SVGSVGElement) {
-  const vb = svg.viewBox.baseVal;
-  if (vb && vb.width > 0) {
-    svg.setAttribute('width', String(vb.width));
-    svg.setAttribute('height', String(vb.height));
-  }
-  svg.style.maxWidth = 'none';
+/** 要素と、そのラベルを合わせた範囲（図ビューの座標） */
+function targetRect(x: DiagramTarget, vp: HTMLElement): Rect {
+  const a = rectIn(x.el, vp);
+  return x.labelEl === x.el ? a : unionRect(a, rectIn(x.labelEl, vp));
+}
+
+/** 並べ替えのドラッグ中の状態（押した要素。動かし始めるまで candidates は null） */
+interface Reorder {
+  target: DiagramTarget & { ref: ElementRef };
+  axis: 'x' | 'y';
+  x: number;
+  y: number;
+  /** 落とし先の候補と、それを測ったときの表示（拡大縮小やパンをしたら測り直す） */
+  candidates: DropCandidate<DiagramTarget>[] | null;
+  measuredFor: ViewBox | null;
+  spot: DropSpot<DiagramTarget> | null;
 }
 
 const TOOLBAR_H = 30;
@@ -51,12 +45,6 @@ function toolbarPosition(r: Rect, vp: HTMLElement | null) {
   return { left, top };
 }
 
-function rectIn(el: Element, container: HTMLElement): Rect {
-  const a = el.getBoundingClientRect();
-  const c = container.getBoundingClientRect();
-  return { left: a.left - c.left, top: a.top - c.top, width: a.width, height: a.height };
-}
-
 export function DiagramPane() {
   const { svg, svgSource, stale, status, error, diagramType } = useRender();
   const readOnly = useSession((s) => s.current?.readOnly ?? true);
@@ -65,7 +53,7 @@ export function DiagramPane() {
 
   const viewport = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLDivElement>(null);
-  const [view, setView] = useState<ViewBox>({ scale: 1, x: 0, y: 0 });
+  const { view, fit, zoomBy, scrollIntoView, beginDrag, moveDrag, endDrag } = usePanZoom(viewport, canvas);
   const [targets, setTargets] = useState<DiagramTarget[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [session, setSession] = useState<LabelSession | null>(null);
@@ -85,18 +73,28 @@ export function DiagramPane() {
   const fittedFor = useRef<string | null>(null);
   /** 追加した要素。描画されたらラベル編集を始める */
   const pendingFocus = useRef<{ ref?: ElementRef; at?: number } | null>(null);
+  const reorder = useRef<Reorder | null>(null);
+  /** ドラッグ中の表示（薄くする要素と、落とす位置の線） */
+  const [drag, setDrag] = useState<{ key: string; line: Rect | null } | null>(null);
+  const dragKey = drag?.key ?? null;
 
   const plugin = pluginFor(diagramType);
   const editable = !readOnly && !stale && status === 'ok';
   const selected = targets.find((x) => keyOf(x) === selectedKey) ?? null;
 
   const startLabelEdit = (target: DiagramTarget) => {
-    if (!target.range) {
+    const base = { key: crypto.randomUUID(), targetKey: keyOf(target), original: target.label };
+    if (target.range) {
+      setSelectedKey(keyOf(target));
+      setSession({ ...base, range: target.range });
+    } else if (target.insertAt) {
+      // ラベルの無い要素: 最初の入力で括弧ごと差し込む
+      const { at, prefix, suffix } = target.insertAt;
+      setSelectedKey(keyOf(target));
+      setSession({ ...base, range: { from: at, to: at }, insert: { prefix, suffix } });
+    } else {
       showToast(t('label.notUnique'));
-      return;
     }
-    setSelectedKey(keyOf(target));
-    setSession({ key: crypto.randomUUID(), targetKey: keyOf(target), range: target.range, original: target.label });
   };
 
   // SVG を差し込み、要素とソースを対応付ける
@@ -134,37 +132,14 @@ export function DiagramPane() {
     }
   }, [svg, svgSource, plugin]);
 
-  const fit = useCallback(() => {
-    const vp = viewport.current;
-    const svgEl = canvas.current?.querySelector('svg');
-    if (!vp || !svgEl) return;
-    const w = Number(svgEl.getAttribute('width')) || svgEl.getBBox().width;
-    const h = Number(svgEl.getAttribute('height')) || svgEl.getBBox().height;
-    const pad = 32;
-    const scale = Math.min(2, Math.max(MIN_SCALE, Math.min((vp.clientWidth - pad * 2) / w, (vp.clientHeight - pad * 2) / h)));
-    setView({ scale, x: (vp.clientWidth - w * scale) / 2, y: (vp.clientHeight - h * scale) / 2 });
-  }, []);
-
-  /** 要素が表示範囲の外にあれば、見えるところまで動かす */
-  const scrollIntoView = (el: Element) => {
-    const vp = viewport.current;
-    if (!vp) return;
-    const r = rectIn(el, vp);
-    const margin = 48;
-    const dx =
-      r.left < margin ? margin - r.left : r.left + r.width > vp.clientWidth - margin ? vp.clientWidth - margin - r.left - r.width : 0;
-    const dy =
-      r.top < margin ? margin - r.top : r.top + r.height > vp.clientHeight - margin ? vp.clientHeight - margin - r.top - r.height : 0;
-    if (dx || dy) setView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
-  };
-
-  // テキストのカーソル位置に対応する要素を強調する
+  // テキストのカーソル位置に対応する要素を強調する。Text は変わらないオブジェクトなので、文字列にするのはテキストが変わったときだけ
+  const sourceString = useMemo(() => sourceText?.toString(), [sourceText]);
   const cursorKey = useMemo(() => {
-    if (!sourceText || sourceText.toString() !== svgSource) return null;
+    if (!sourceText || sourceString !== svgSource) return null;
     const line = sourceText.lineAt(Math.min(selection.head, sourceText.length));
     const hit = targets.find((x) => x.range && x.range.from >= line.from && x.range.from <= line.to);
     return hit ? keyOf(hit) : null;
-  }, [targets, selection, sourceText, svgSource]);
+  }, [targets, selection, sourceText, sourceString, svgSource]);
 
   useEffect(() => {
     for (const x of targets) {
@@ -173,13 +148,15 @@ export function DiagramPane() {
       x.el.classList.toggle('mmd-selected', k === selectedKey);
       x.el.classList.toggle('mmd-cursor', k === cursorKey && k !== selectedKey);
       x.el.classList.toggle('mmd-connect-from', !!connect && sameRef(x.ref, connect.from));
+      x.el.classList.toggle('mmd-dragging', k === dragKey);
     }
-  }, [targets, selectedKey, cursorKey, connect]);
+  }, [targets, selectedKey, cursorKey, connect, dragKey]);
 
-  // 選択中の要素の操作ボタンの位置
+  // 選択中の要素の操作ボタンの位置。ラベルが要素の外にある（メッセージの本文は線の上など）ので、
+  // 要素とラベルを合わせた範囲の上に置き、ラベルを覆わない（覆うとダブルクリックやドラッグができない）
   useLayoutEffect(() => {
     const vp = viewport.current;
-    setToolbarRect(selected && vp ? rectIn(selected.el, vp) : null);
+    setToolbarRect(selected && vp ? targetRect(selected, vp) : null);
   }, [selected, view, renderTick]);
 
   const targetAt = (node: EventTarget | null) => {
@@ -193,11 +170,9 @@ export function DiagramPane() {
     return best;
   };
 
-  // ---- 追加・接続の操作 ----
-  const runAction = async (action: DiagramAction, refs: ElementRef[]) => {
-    const source = useSession.getState().current?.text.toString();
-    if (source === undefined || !editable) return;
-    const res = action.run(source, refs);
+  // ---- 追加・接続・並べ替えの操作 ----
+  /** 操作の結果を適用する（検証に通らなければ通知する） */
+  const commit = async (res: ActionResult | null, danger = false) => {
     if (!res) {
       showToast(t('action.unsupported'));
       return;
@@ -207,9 +182,17 @@ export function DiagramPane() {
     if (r !== 'ok') {
       pendingFocus.current = null;
       if (r === 'invalid') showToast(t('action.invalid'));
-    } else if (action.danger) {
+    } else if (danger) {
       setSelectedKey(null);
+    } else if (res.select) {
+      setSelectedKey(`e:${refKey(res.select)}`);
     }
+  };
+
+  const runAction = async (action: DiagramAction, refs: ElementRef[]) => {
+    const source = useSession.getState().current?.text.toString();
+    if (source === undefined || !editable) return;
+    await commit(action.run(source, refs), action.danger);
   };
 
   const triggerAction = (action: DiagramAction) => {
@@ -224,35 +207,79 @@ export function DiagramPane() {
 
   const toolbarActions = plugin.actions?.filter((a) => a.arity === 0) ?? [];
   const elementActions = plugin.actions?.filter((a) => a.arity > 0 && applies(a, selected?.ref)) ?? [];
+  const buttonActions = elementActions.filter((a) => !a.menuOnly);
 
-  // ---- パンとズーム ----
-  const drag = useRef<{ x: number; y: number; vx: number; vy: number; moved: boolean } | null>(null);
-
+  // ---- クリック（選択・接続）とドラッグ（パン・並べ替え） ----
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0 && e.button !== 1) return;
     if ((e.target as Element).closest('.inline-label-editor, .element-toolbar, .context-menu')) return;
     setMenu(null);
-    drag.current = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false };
-    try {
-      (e.currentTarget as Element).setPointerCapture(e.pointerId);
-    } catch {
-      // ペンや合成イベントなどで捕捉できないときは、捕捉なしで続ける
+    // 並べ替えられる要素の上で押したら、パンではなく並べ替えのドラッグにする
+    const source = useSession.getState().current?.text.toString();
+    const hit = e.button === 0 && editable && !connect && plugin.reorder && source !== undefined ? targetAt(e.target) : null;
+    const axis = hit?.ref ? plugin.reorder!.axis(source!, hit.ref) : null;
+    if (hit?.ref && axis) {
+      reorder.current = { target: { ...hit, ref: hit.ref }, axis, x: e.clientX, y: e.clientY, candidates: null, measuredFor: null, spot: null };
+      try {
+        (e.currentTarget as Element).setPointerCapture(e.pointerId);
+      } catch {
+        // 捕捉できないときは、捕捉なしで続ける
+      }
+      return;
     }
+    beginDrag(e);
   };
+
   const onPointerMove = (e: React.PointerEvent) => {
-    const d = drag.current;
-    if (!d) return;
-    const dx = e.clientX - d.x;
-    const dy = e.clientY - d.y;
-    if (!d.moved && Math.hypot(dx, dy) < 4) return;
-    d.moved = true;
-    setView((v) => ({ ...v, x: d.vx + dx, y: d.vy + dy }));
+    const r = reorder.current;
+    if (!r) return moveDrag(e);
+    const vp = viewport.current;
+    if (!vp) return;
+    if (!r.candidates && Math.hypot(e.clientX - r.x, e.clientY - r.y) < DRAG_THRESHOLD_PX) return;
+    // 候補の位置は、動かし始めたとき（と表示が変わったとき）だけ測る
+    if (!r.candidates || r.measuredFor !== view) {
+      const ref = r.target.ref;
+      // 動かしている要素の中（枠の中のメッセージなど）には落とせないので、候補から外す
+      const own = targetRect(r.target, vp);
+      r.candidates = markContainers(
+        targets
+          .filter((x) => x.ref && !sameRef(x.ref, ref) && plugin.reorder!.accepts(ref, x.ref))
+          .map((x) => ({ item: x, rect: targetRect(x, vp) }))
+          .filter((c) => !contains(own, c.rect)),
+      );
+      r.measuredFor = view;
+    }
+    const box = vp.getBoundingClientRect();
+    const spot = findDrop(r.axis, { x: e.clientX - box.left, y: e.clientY - box.top }, r.candidates);
+    // 離したときは描き直しを待たずに最新の落とし先を使うので、ref に持つ。落とし先が変わったときだけ描き直す
+    const changed = !r.spot || !spot || r.spot.item !== spot.item || r.spot.before !== spot.before;
+    r.spot = spot;
+    if (changed || !drag) setDrag({ key: keyOf(r.target), line: spot?.line ?? null });
   };
+
+  const endReorder = () => {
+    reorder.current = null;
+    setDrag(null);
+  };
+
   const onPointerUp = (e: React.PointerEvent) => {
-    const d = drag.current;
-    drag.current = null;
-    if (!d || d.moved) return;
-    const hit = targetAt(document.elementFromPoint(e.clientX, e.clientY));
+    const r = reorder.current;
+    if (r?.candidates) {
+      // 並べ替え: 落とし先の前後へ動かす
+      const spot = r.spot;
+      endReorder();
+      const source = useSession.getState().current?.text.toString();
+      // 動かせない・動かしても変わらない落とし先（すぐ隣など）では何もしない
+      const res = spot?.item.ref && source !== undefined && editable ? plugin.reorder!.move(source, r.target.ref, spot.item.ref, spot.before) : null;
+      if (res) void commit(res);
+      return;
+    }
+    if (r) endReorder();
+    else {
+      const d = endDrag();
+      if (!d || d.moved) return;
+    }
+    const hit = r ? r.target : targetAt(document.elementFromPoint(e.clientX, e.clientY));
     if (connect) {
       // 接続モード: クリックした要素へ接続する
       const kinds = connect.action.targetKinds ?? connect.action.appliesTo ?? ['node'];
@@ -268,7 +295,8 @@ export function DiagramPane() {
   const onKeyDown = (e: React.KeyboardEvent) => {
     if ((e.target as Element).closest('.inline-label-editor')) return;
     if (e.key === 'Escape') {
-      if (menu) setMenu(null);
+      if (reorder.current) endReorder();
+      else if (menu) setMenu(null);
       else if (connect) setConnect(null);
       else setSelectedKey(null);
       return;
@@ -283,36 +311,6 @@ export function DiagramPane() {
       e.preventDefault();
       startLabelEdit(selected);
     }
-  };
-
-  useEffect(() => {
-    const vp = viewport.current;
-    if (!vp) return;
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      const rect = vp.getBoundingClientRect();
-      const px = e.clientX - rect.left;
-      const py = e.clientY - rect.top;
-      setView((v) => {
-        const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, v.scale * Math.exp(-e.deltaY * 0.0015)));
-        const k = scale / v.scale;
-        return { scale, x: px - (px - v.x) * k, y: py - (py - v.y) * k };
-      });
-    };
-    vp.addEventListener('wheel', onWheel, { passive: false });
-    return () => vp.removeEventListener('wheel', onWheel);
-  }, []);
-
-  const zoomBy = (factor: number) => {
-    const vp = viewport.current;
-    if (!vp) return;
-    const px = vp.clientWidth / 2;
-    const py = vp.clientHeight / 2;
-    setView((v) => {
-      const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, v.scale * factor));
-      const k = scale / v.scale;
-      return { scale, x: px - (px - v.x) * k, y: py - (py - v.y) * k };
-    });
   };
 
   // 右クリック: 要素に使える操作のメニュー
@@ -383,6 +381,10 @@ export function DiagramPane() {
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
+        onPointerCancel={() => {
+          endReorder();
+          endDrag();
+        }}
         onDoubleClick={onDoubleClick}
         onContextMenu={onContextMenu}
         onKeyDown={onKeyDown}
@@ -393,13 +395,14 @@ export function DiagramPane() {
           style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}
         />
         {status === 'empty' && <div className="diagram-empty">{t('diagram.empty')}</div>}
-        {editable && !session && !connect && !menu && selected?.ref && toolbarRect && elementActions.length > 0 && (
+        {drag?.line && <div className="drop-indicator" style={drag.line} aria-hidden />}
+        {editable && !session && !connect && !menu && selected?.ref && toolbarRect && buttonActions.length > 0 && (
           <div
             className="element-toolbar"
             style={toolbarPosition(toolbarRect, viewport.current)}
             onPointerDown={(e) => e.stopPropagation()}
           >
-            {elementActions.map((a) => (
+            {buttonActions.map((a) => (
               <button
                 key={a.id}
                 className={`btn${a.danger ? ' danger' : ''}`}
@@ -423,7 +426,7 @@ export function DiagramPane() {
             <button
               role="menuitem"
               className="menu-item"
-              disabled={!editable || !selected.range}
+              disabled={!editable || (!selected.range && !selected.insertAt)}
               onClick={() => {
                 setMenu(null);
                 startLabelEdit(selected);

@@ -51,8 +51,14 @@ function labelText(el: Element): string {
 /** ラベル文字列の突き合わせによる対応付け。exclude の中にあるラベルは除く（図種プラグインが対応付け済みのもの） */
 export function genericTargets(svg: SVGSVGElement, source: string, exclude: Element[] = []): DiagramTarget[] {
   const targets: DiagramTarget[] = [];
+  // ラベルごとに除外する要素すべてと比べず、ラベルの祖先が除外する要素かだけを見る
+  const excluded = new Set(exclude);
+  const isExcluded = (el: Element) => {
+    for (let n: Element | null = el; n && n !== svg; n = n.parentElement) if (excluded.has(n)) return true;
+    return false;
+  };
   labelElements(svg).forEach((el, i) => {
-    if (exclude.some((x) => x.contains(el))) return;
+    if (isExcluded(el)) return;
     const label = labelText(el);
     if (label === '') return;
     targets.push({ id: `label-${i}`, el, labelEl: el, label, range: findUniqueRange(source, label) });
@@ -62,16 +68,15 @@ export function genericTargets(svg: SVGSVGElement, source: string, exclude: Elem
 
 export { labelText };
 
+/** 図種プラグインが対応付けた要素に、残りのラベルの汎用の対応付けを足す */
+export function withGeneric(svg: SVGSVGElement, source: string, mapped: DiagramTarget[]): DiagramTarget[] {
+  return [...mapped, ...genericTargets(svg, source, mapped.flatMap((x) => [x.el, ...(x.hits ?? [])]))];
+}
+
 export const genericPlugin: DiagramPlugin = {
   type: '*',
-  capabilities: ['label'],
 
   mapTargets(svg, source) {
     return genericTargets(svg, source);
-  },
-
-  renameLabel(_source, target, value) {
-    if (!target.range) return null;
-    return { from: target.range.from, to: target.range.to, insert: value };
   },
 };
