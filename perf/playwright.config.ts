@@ -12,5 +12,6 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   timeout: 120_000,
+  projects: undefined,
   webServer: { ...(base.webServer as object), cwd: root } as typeof base.webServer,
 });

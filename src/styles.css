@@ -1653,3 +1653,26 @@ button.tag {
 .compare-canvas .mmd-hit {
   display: none;
 }
+
+/* ---- タイムラプス ---- */
+.timelapse-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.timelapse-bar input[type='range'] {
+  flex: 1;
+}
+
+.timelapse-step {
+  min-width: 0;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timelapse-stage {
+  flex: 1;
+}
