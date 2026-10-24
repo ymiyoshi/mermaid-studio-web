@@ -433,6 +433,31 @@ test('アプリとして .mmd を開いたとき（launchQueue）、そのファ
   await expect(node(page, '渡された')).toBeVisible();
 });
 
+test('ファイルを渡されて起動したとき、見本の図を作らずにそのファイルだけを開く', async ({ page }) => {
+  // Chrome は、起動時のファイルを setConsumer の直後に渡す
+  await page.addInitScript(() => {
+    class Handle {
+      kind = 'file';
+      name = '起動.mmd';
+      async getFile() {
+        return new File(['flowchart LR\n  S[起動で渡された] --> T'], this.name, { lastModified: 1 });
+      }
+      async isSameEntry(other: unknown) {
+        return other === this;
+      }
+    }
+    const handle = new Handle();
+    Object.defineProperty(window, 'launchQueue', {
+      configurable: true,
+      value: { setConsumer: (c: (p: unknown) => void) => queueMicrotask(() => c({ files: [handle] })) },
+    });
+  });
+  await page.goto('/');
+  await expect(node(page, '起動で渡された')).toBeVisible();
+  await expect(page.locator('.title-input')).toHaveValue('起動');
+  await expect(page.locator('.sidebar .doc-open')).toHaveCount(1);
+});
+
 test('画像として書き出す（PNG のダウンロード）', async ({ page }) => {
   await openApp(page);
   await page.keyboard.press('Control+Shift+E');

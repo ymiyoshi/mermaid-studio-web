@@ -44,7 +44,18 @@ function show(cur: CurrentDoc) {
   emitReset(cur, selection);
 }
 
-export async function openDoc(id: string): Promise<void> {
+/** 図を開く処理は 1 本ずつ順に走らせる（重なると、書き込み権を取ったまま手放さない図ができる） */
+let opening: Promise<void> = Promise.resolve();
+
+export function openDoc(id: string): Promise<void> {
+  const run = opening.then(() => openDocNow(id));
+  opening = run.catch(() => {});
+  return run;
+}
+
+async function openDocNow(id: string): Promise<void> {
+  // 今開いている図なら何もしない。書き込み権を手放してすぐ取り直すと、ブラウザによっては取れずに読み取り専用になる
+  if (get().current?.id === id && currentLock) return;
   await flush();
   currentLock?.release();
   currentLock = null;
@@ -166,7 +177,20 @@ export function setTheme(theme: Theme) {
 
 // ---- 起動 ---------------------------------------------------------------
 
-export async function init() {
+/** 最後に開いていた図を開く。無ければ見本のフローチャートを作る */
+export async function openInitialDoc() {
+  const lastOpened = await store.getSetting<string>('lastOpened');
+  const alive = get().docs.filter((d) => d.deletedAt === null);
+  const target = alive.find((d) => d.id === lastOpened) ?? alive[0];
+  if (target) await openDoc(target.id);
+  else await createFromTemplate('flowchart');
+}
+
+/**
+ * skipInitialDoc が true になったら、最初の図を開かない（OS から渡されたファイルを開いて起動したとき。
+ * 前回の図や見本の図を開いてから、すぐ別の図に切り替えることになるため）
+ */
+export async function init(opts: { skipInitialDoc?: Promise<boolean> } = {}) {
   // 無制限の履歴を保つため、永続ストレージを要求する（§8.5）
   await navigator.storage?.persist?.().catch(() => false);
   await store.purgeExpiredTrash();
@@ -175,11 +199,7 @@ export async function init() {
   const docs = await store.listDocs();
   set({ docs, theme });
 
-  const lastOpened = await store.getSetting<string>('lastOpened');
-  const alive = docs.filter((d) => d.deletedAt === null);
-  const target = alive.find((d) => d.id === lastOpened) ?? alive[0];
-  if (target) await openDoc(target.id);
-  else await createFromTemplate('flowchart');
+  if (!(await opts.skipInitialDoc)) await openInitialDoc();
 
   onBroadcast(async (msg) => {
     if (msg.type === 'docs-changed' || msg.type === 'saved') set({ docs: await store.listDocs() });
