@@ -313,6 +313,16 @@ test('ブロック図: 次のブロックを足してラベルを付け、ブロ
   await expect(blockNode('API')).toHaveCount(0);
 });
 
+test('メッセージの本文を打って Enter を押すと、補完ではなく改行になる', async ({ page }) => {
+  await openApp(page);
+  await setEditorText(page, 'sequenceDiagram\n  U->>S: リクエスト\n  S->>U: ');
+  await page.keyboard.type('リク');
+  await page.waitForTimeout(300);
+  await expect(page.locator('.cm-tooltip-autocomplete')).toHaveCount(0);
+  await page.keyboard.press('Enter');
+  await expect.poll(() => editorText(page)).toContain('S->>U: リク\n');
+});
+
 test('円グラフは表で編集できる', async ({ page }) => {
   await openApp(page);
   await newFromTemplate(page, '円グラフ');
@@ -388,7 +398,7 @@ test('タッチのピンチで図を拡大する', async ({ browser }) => {
   const cx = box.x + box.width / 2;
   const cy = box.y + box.height / 2;
   const cdp = await context.newCDPSession(page);
-  const touch = (type: string, d: number) =>
+  const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', d: number) =>
     cdp.send('Input.dispatchTouchEvent', {
       type,
       touchPoints: type === 'touchEnd' ? [] : [{ x: cx - d / 2, y: cy, id: 1 }, { x: cx + d / 2, y: cy, id: 2 }],

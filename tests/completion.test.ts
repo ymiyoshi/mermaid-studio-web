@@ -39,4 +39,18 @@ describe('入力補完', () => {
     expect(completeAt(src, src.length)).toBeNull();
     expect(labels(completeAt(src, src.length, true))).toContain('subgraph');
   });
+  it('本文（: の後・括弧や引用符の中）と日本語の語では自動で出さない（Ctrl+Space なら出す）', () => {
+    const msg = 'sequenceDiagram\n  U->>S: リクエスト\n  S->>U: Re';
+    expect(completeAt(msg, msg.length)).toBeNull();
+    const ja = 'sequenceDiagram\n  participant 利用者\n  利';
+    expect(completeAt(ja, ja.length)).toBeNull();
+    expect(labels(completeAt(ja, ja.length, true))).toContain('利用者');
+    const label = 'flowchart LR\n  Kensaku --> B[Ken';
+    expect(completeAt(label, label.length)).toBeNull();
+    const edge = 'flowchart LR\n  Kensaku -->|Ke';
+    expect(completeAt(edge, edge.length)).toBeNull();
+    // 閉じた括弧の後は本文の外
+    const after = 'flowchart LR\n  Kensaku[検索] --> Ke';
+    expect(labels(completeAt(after, after.length))).toContain('Kensaku');
+  });
 });

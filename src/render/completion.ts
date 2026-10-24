@@ -81,6 +81,21 @@ function namesIn(source: string, skipFrom: number, skipTo: number): string[] {
   return [...count.entries()].sort((a, b) => b[1] - a[1]).map(([w]) => w);
 }
 
+/** 行のここまでが、本文（「: 」の後ろ、閉じていない括弧・引用符・| の中）か */
+function inFreeText(before: string): boolean {
+  if (/:\s/.test(before)) return true;
+  const stack: string[] = [];
+  let quote = false;
+  for (const c of before) {
+    if (c === '"') quote = !quote;
+    else if (quote) continue;
+    else if ('[({'.includes(c)) stack.push(c);
+    else if (')]}'.includes(c)) stack.pop();
+    else if (c === '|') stack.at(-1) === '|' ? stack.pop() : stack.push('|');
+  }
+  return quote || stack.length > 0;
+}
+
 /**
  * pos の位置の補完候補。補う語の始まり（from）と候補を返す。候補が無ければ null。
  * explicit は Ctrl+Space で呼んだとき（語を打っていなくても候補を出す）
@@ -97,6 +112,10 @@ export function completeAt(source: string, pos: number, explicit = false): { fro
   if (/@\{[^}]*\bshape:\s*[\w-]*$/.test(before)) {
     return { from, options: META_SHAPES.map((s) => ({ label: s.name, detail: s.label, type: 'enum' as const })) };
   }
+
+  // 自動で出すのは、英字か _ で始まる語を打っているときと、本文（ラベルやメッセージ）の外だけ。
+  // 日本語の本文を打って Enter で改行したいときに、図の中の名前が確定してしまわないように（Ctrl+Space なら出す）
+  if (!explicit && (!/^[A-Za-z_]/.test(word) || inFreeText(before.slice(0, before.length - word.length)))) return null;
 
   const { header } = bodyLines(source);
   // 宣言行（まだ無いか、いま打っている行）では図種を出す
