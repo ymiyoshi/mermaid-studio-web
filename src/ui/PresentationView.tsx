@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSession } from '../core/session';
 import { renderSvg } from '../render/mermaid';
 import type { DocRecord } from '../storage/db';
-import { t } from '../i18n';
+import { locale, t } from '../i18n';
 
 // 発表モード: 選んだ図を全画面で 1 枚ずつ見せる。← → / Space / PageUp / PageDown で送り、Esc で終える。
 // 最初に、見せる図をタグで絞り、並び順を決める。
@@ -15,7 +15,7 @@ export function slideOrder(docs: DocRecord[], tag: string, order: Order): DocRec
   const by: Record<Order, (a: DocRecord, b: DocRecord) => number> = {
     updated: (a, b) => b.updatedAt - a.updatedAt,
     created: (a, b) => a.createdAt - b.createdAt,
-    title: (a, b) => a.title.localeCompare(b.title, 'ja'),
+    title: (a, b) => a.title.localeCompare(b.title, locale()),
   };
   return [...list].sort(by[order]);
 }

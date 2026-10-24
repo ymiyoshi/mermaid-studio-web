@@ -1,6 +1,48 @@
-// 最小限の i18n。現在は日本語のみ（設計書 §10）。英語は辞書を追加するだけで対応できる。
+import * as flowchartLocale from './locales/flowchart';
+import * as sequenceLocale from './locales/sequence';
+import * as dataLocale from './locales/data';
+import * as graphLocale from './locales/graph';
+import * as miscLocale from './locales/misc';
+import { EN_CORE } from './locales/coreEn';
 
-const ja = {
+// i18n（設計書 §10）。日本語と英語。画面の文言はここ、図種プラグインの文言は src/locales/ の分野ごとの辞書に置く。
+// 英語の辞書は Record<キー, string> なので、訳し忘れは型チェックで分かる。
+// プラグインの操作名などはモジュールを読み込んだときに文言が決まるので、言語を変えたらページを読み込み直す。
+
+export type Lang = 'ja' | 'en';
+
+/** 言語は、モジュールを読み込む前に決まっている必要があるので、IndexedDB ではなく localStorage に持つ */
+const LANG_KEY = 'mermaid-studio-lang';
+
+function initialLang(): Lang {
+  try {
+    const v = localStorage.getItem(LANG_KEY);
+    if (v === 'ja' || v === 'en') return v;
+  } catch {
+    // 使えない環境（テスト・制限のあるブラウザ）では日本語
+  }
+  return 'ja';
+}
+
+let lang: Lang = initialLang();
+
+export const getLang = () => lang;
+
+/** 日付や並び替えに使うロケール */
+export const locale = () => (lang === 'en' ? 'en-US' : 'ja-JP');
+
+/** 言語を変えて、ページを読み込み直す */
+export function setLang(next: Lang) {
+  try {
+    localStorage.setItem(LANG_KEY, next);
+  } catch {
+    // 覚えられなくても、今回だけ切り替える
+  }
+  lang = next;
+  location.reload();
+}
+
+const core = {
   'app.title': 'Mermaid Studio',
   'doc.untitled': '無題の図',
   'doc.new': '新規',
@@ -185,6 +227,8 @@ const ja = {
   'bulk.hint': 'Shift / Ctrl を押しながらクリックで選択に足す・外す ・ Delete でまとめて消す',
   'bulk.prop': '{n} 個の{name}を変更',
   'bulk.deleted': '{n} 個の要素を削除',
+  'lang.label': '言語',
+  'cmd.switchLang': 'English（英語）に切り替える',
   'cmd.title': 'コマンド',
   'cmd.placeholder': '操作や図の名前で探す（↑↓ で選んで Enter）',
   'cmd.empty': '該当する操作がありません',
@@ -224,10 +268,18 @@ const ja = {
   'storage.notPersisted': '永続ストレージが許可されていません。ブラウザがデータを消去する可能性があります。',
 } as const;
 
+const ja = { ...core, ...flowchartLocale.ja, ...sequenceLocale.ja, ...dataLocale.ja, ...graphLocale.ja, ...miscLocale.ja };
+
 export type MessageKey = keyof typeof ja;
 
+export type CoreKey = keyof typeof core;
+
+const coreEn: Record<CoreKey, string> = EN_CORE;
+
+const en: Record<MessageKey, string> = { ...coreEn, ...flowchartLocale.en, ...sequenceLocale.en, ...dataLocale.en, ...graphLocale.en, ...miscLocale.en };
+
 export function t(key: MessageKey, params?: Record<string, string>): string {
-  let s: string = ja[key];
+  let s: string = (lang === 'en' ? en : ja)[key];
   if (params) for (const [k, v] of Object.entries(params)) s = s.replaceAll(`{${k}}`, v);
   return s;
 }

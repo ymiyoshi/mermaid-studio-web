@@ -6,7 +6,7 @@ import { layoutHistory } from './historyLayout';
 import { CompareView } from './CompareView';
 import { TimelapseView } from './TimelapseView';
 import { useLayout } from './layoutStore';
-import { t } from '../i18n';
+import { locale, t } from '../i18n';
 
 const ROW_H = 30;
 const LANE_W = 14;
@@ -25,7 +25,7 @@ const ORIGIN_ICON: Record<Origin, string> = {
   restore: '↺',
 };
 
-const timeFmt = new Intl.DateTimeFormat('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+const timeFmt = new Intl.DateTimeFormat(locale(), { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 /** 行の追加・削除の数（順番は見ない簡易な差分） */
 export function lineDiff(before: string, after: string): { added: number; removed: number } {
@@ -77,7 +77,7 @@ function HistoryPreview({ tree, preview }: { tree: HistoryTree; preview: Preview
     <div className="history-preview" style={{ top: preview.top, right: preview.right }} role="tooltip">
       <div className="preview-head">
         <strong>{preview.node.name ?? preview.node.label}</strong>
-        <span className="muted small">{new Date(preview.node.ts).toLocaleString('ja-JP')}</span>
+        <span className="muted small">{new Date(preview.node.ts).toLocaleString(locale())}</span>
         {diff && (
           <span className="small">
             <span className="diff-add">+{diff.added}</span> <span className="diff-del">−{diff.removed}</span> {t('history.lines')}

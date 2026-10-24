@@ -5,13 +5,13 @@ import { pluginFor } from '../plugins/registry';
 import { diffDiagrams, diffItems, type DiffItem, type DiffKind } from '../render/diagramDiff';
 import type { DiagramTarget } from '../plugins/types';
 import { lineDiff } from './HistoryPane';
-import { t } from '../i18n';
+import { locale, t } from '../i18n';
 
 // 図で見る差分（§8.4 の拡張）。履歴の 2 つの版を左右に描き、
 // 前の版には消した要素（赤）と変えた要素（黄）、後の版には足した要素（緑）と変えた要素を光らせる。
 // 別々の分岐の版どうしも比べられる。
 
-const timeFmt = new Intl.DateTimeFormat('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const timeFmt = new Intl.DateTimeFormat(locale(), { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
 const CLASS: Record<DiffKind, string> = { added: 'mmd-diff-add', removed: 'mmd-diff-del', changed: 'mmd-diff-chg' };
 

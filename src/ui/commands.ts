@@ -6,7 +6,7 @@ import { useIo } from '../io/ioStore';
 import { copyShareLink } from '../io/shareActions';
 import type { Theme } from '../render/mermaid';
 import { togglePane, useLayout } from './layoutStore';
-import { t } from '../i18n';
+import { getLang, setLang, t } from '../i18n';
 
 // コマンドパレット（Ctrl+K）の中身。メニューやボタンにある操作を、キーボードだけで探して実行できるようにする。
 
@@ -59,6 +59,7 @@ export function buildCommands(): Command[] {
     { id: 'present', title: t('present.open'), run: () => useLayout.setState({ presentOpen: true }) },
     hasDoc && { id: 'snippets', title: t('snippet.open'), run: () => useLayout.setState({ snippetsOpen: true }) },
     hasDoc && { id: 'timelapse', title: t('timelapse.open'), run: () => useLayout.setState({ timelapseOpen: true }) },
+    { id: 'lang', title: t('cmd.switchLang'), run: () => setLang(getLang() === 'ja' ? 'en' : 'ja') },
     ...THEMES.map((th) => ({ id: `theme:${th}`, title: t('cmd.theme', { theme: th }), run: () => setTheme(th) })),
   ]);
   g(
