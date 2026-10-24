@@ -44,7 +44,7 @@ npm run build      # 型チェック + 本番ビルド
 - IndexedDB を使うテストは `import 'fake-indexeddb/auto'` と、`beforeAll` での `db.resetDbConnection()` ＋ データベースの削除で始める。
 - テスト用の File System Access API は `tests/helpers/fakeFs.ts`。偽のハンドルは IndexedDB に保存するとメソッドを失う点に注意（`tests/filesReopen.test.ts` の対処を参照）。
 - E2E の `test.fail(...)` は既知の不具合。直したら `test.fail` を `test` に戻す（そのままだと Playwright が「通ってしまった」として失敗にする）。テストを通すために、テストを消したり弱めたりしない。
-- 既知の不具合（`e2e/app.spec.ts` の末尾）: 編集のたびの描き直しの間、図ビューが「編集できない」扱いになる（入力欄のフォーカスが外れる・直後の Tab / Delete が効かない）。履歴のプレビューを出したまま図を切り替えると画面が消える。
+- 図ビューの `editable`（図の要素の位置とソースの範囲が今のテキストと合っている）と `canEdit`（編集してよい）は別物。描き直しを待つ間も、パネル・表・意味上の参照で動く操作は `canEdit` で使える。ソースの範囲を使う操作（ラベルの直接編集・並べ替え）だけを `editable` で止める。
 
 ## 文章と言語
 

@@ -32,8 +32,7 @@ test('ラベルをダブルクリックで直し、Tab で次のノードを足�
   await page.keyboard.press('Enter');
   await expect.poll(() => editorText(page)).toContain('A[スタート]');
 
-  // 描き直しが終わるまでは図から操作できない（既知の不具合の 1 つ目を参照）
-  await expect(page.locator('.diagram-viewport')).toHaveClass(/editable/);
+  // 描き直しを待たずに、続けて Tab で次のノードを足せる
   await page.keyboard.press('Tab');
   await page.locator('.inline-label-editor input').fill('準備');
   await page.keyboard.press('Enter');
@@ -63,15 +62,13 @@ test('undo・redo と、再読み込みしても残る履歴', async ({ page }) 
   await expect.poll(() => editorText(page)).toContain('A[開始]');
 });
 
-test('ノードを選んで形を変え、Delete で消す', async ({ page }) => {
+test('プロパティで形を変えた直後でも、Delete で消せる', async ({ page }) => {
   await openApp(page);
   await node(page, '処理を実行').click();
   await expect(page.locator('.panel-heading')).toHaveText('ノード: C');
   await page.getByLabel('形').selectOption('cylinder');
   await expect.poll(() => editorText(page)).toContain('C[(処理を実行)]');
 
-  // 描き直しが終わるまでは図から操作できない（既知の不具合の 1 つ目を参照）
-  await expect(page.locator('.diagram-viewport')).toHaveClass(/editable/);
   await node(page, 'スキップ').click();
   await page.keyboard.press('Delete');
   await expect.poll(() => editorText(page)).not.toContain('スキップ');
@@ -223,11 +220,9 @@ test('狭い画面ではタブで切り替える', async ({ page }) => {
   await expect(page.locator('.diagram-viewport')).toBeHidden();
 });
 
-// ---- 既知の不具合（直したら test.fail を外す） ------------------------------------
+// ---- 以前の不具合の再発防止 ------------------------------------
 
-// 原因: 変更のたびの描き直しの間、図ビューが「編集できない」扱いになり、プロパティパネルの入力欄が disabled になる
-// （フォーカスが外れる）。同じ理由で、編集の直後に Tab や Delete を押しても図の操作として受け付けない。
-test.fail('既知の不具合: 表のセルに続けて打つと、2 文字目からフォーカスが外れる', async ({ page }) => {
+test('表のセルに続けて打っても、フォーカスが外れない', async ({ page }) => {
   await openApp(page);
   await newFromTemplate(page, '円グラフ');
   const cell = page.locator('.table-row .row-cell input').first();
@@ -237,8 +232,8 @@ test.fail('既知の不具合: 表のセルに続けて打つと、2 文字目�
   await expect.poll(() => editorText(page)).toContain('"Edge" : 62');
 });
 
-test.fail('既知の不具合: 履歴のプレビューを出したまま図を切り替えると、画面が消える', async ({ page }) => {
-  await openApp(page);
+test('履歴のプレビューを出したまま図を切り替えても、画面が消えない', async ({ page }) => {
+  const errors = await openApp(page);
   await node(page, '開始').dblclick();
   await page.locator('.inline-label-editor input').fill('x');
   await page.keyboard.press('Enter');
@@ -249,4 +244,6 @@ test.fail('既知の不具合: 履歴のプレビューを出したまま図を�
   await page.evaluate(() => (document.querySelector('.sidebar .btn.primary') as HTMLElement).click());
   await page.evaluate(() => ([...document.querySelectorAll('.sidebar .menu-item')].find((b) => b.textContent === '円グラフ') as HTMLElement).click());
   await expect(page.locator('.title-input')).toHaveValue('円グラフ');
+  await expect(page.locator('.history-preview')).toHaveCount(0);
+  expect(errors).toEqual([]);
 });

@@ -140,6 +140,13 @@ export function HistoryPane() {
 
   useEffect(() => () => void (hoverTimer.current && clearTimeout(hoverTimer.current)), []);
 
+  // 別の図に切り替えたら、前の図の版のプレビューを閉じる（待っているプレビューも出さない）
+  const docId = current?.id;
+  useEffect(() => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    setPreview(null);
+  }, [docId]);
+
   if (!current || !layout) return <section className="pane history-pane" />;
 
   const width = layout.lanes * LANE_W + 6;
@@ -310,7 +317,8 @@ export function HistoryPane() {
           )}
         </div>
       </div>
-      {preview && <HistoryPreview tree={current.tree} preview={preview} />}
+      {/* 切り替えた直後の描画では、まだ前の図の版を指していることがある。今の図に無い版は出さない */}
+      {preview && current.tree.nodes.has(preview.node.id) && <HistoryPreview tree={current.tree} preview={preview} />}
     </section>
   );
 }

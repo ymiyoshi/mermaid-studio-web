@@ -79,7 +79,11 @@ export function DiagramPane() {
   const dragKey = drag?.key ?? null;
 
   const plugin = pluginFor(diagramType);
+  // 図の要素の位置とソースの範囲（targets）が今のテキストと合っているか。ラベルの直接編集と並べ替えはこれが要る
   const editable = !readOnly && !stale && status === 'ok';
+  // 編集してよいか。描き直しを待つ間も、パネル・表と、意味上の参照で動く操作（Tab・Delete など）は使える。
+  // これらはいまのソースから変更を作り直し、applyDiagramChange が検証するので、図が古くても壊れない
+  const canEdit = !readOnly && (status === 'ok' || status === 'pending') && svg !== null;
   const selected = targets.find((x) => keyOf(x) === selectedKey) ?? null;
 
   const startLabelEdit = (target: DiagramTarget) => {
@@ -191,7 +195,7 @@ export function DiagramPane() {
 
   const runAction = async (action: DiagramAction, refs: ElementRef[]) => {
     const source = useSession.getState().current?.text.toString();
-    if (source === undefined || !editable) return;
+    if (source === undefined || !canEdit) return;
     await commit(action.run(source, refs), action.danger);
   };
 
@@ -301,13 +305,13 @@ export function DiagramPane() {
       else setSelectedKey(null);
       return;
     }
-    if (!editable || !selected) return;
+    if (!canEdit || !selected) return;
     const key = e.key === 'Backspace' ? 'Delete' : e.key;
     const bound = selected.ref ? elementActions.find((a) => a.key === key && a.arity === 1) : undefined;
     if (bound && selected.ref) {
       e.preventDefault();
       void runAction(bound, [selected.ref]);
-    } else if (e.key === 'Enter' || e.key === 'F2') {
+    } else if ((e.key === 'Enter' || e.key === 'F2') && editable) {
       e.preventDefault();
       startLabelEdit(selected);
     }
@@ -341,7 +345,7 @@ export function DiagramPane() {
       <div className="pane-toolbar">
         <span className="pane-title">{diagramType ?? '—'}</span>
         {toolbarActions.map((a) => (
-          <button key={a.id} className="btn" disabled={!editable} onClick={() => triggerAction(a)}>
+          <button key={a.id} className="btn" disabled={!canEdit} onClick={() => triggerAction(a)}>
             {a.title}
           </button>
         ))}
@@ -396,7 +400,7 @@ export function DiagramPane() {
         />
         {status === 'empty' && <div className="diagram-empty">{t('diagram.empty')}</div>}
         {drag?.line && <div className="drop-indicator" style={drag.line} aria-hidden />}
-        {editable && !session && !connect && !menu && selected?.ref && toolbarRect && buttonActions.length > 0 && (
+        {canEdit && !session && !connect && !menu && selected?.ref && toolbarRect && buttonActions.length > 0 && (
           <div
             className="element-toolbar"
             style={toolbarPosition(toolbarRect, viewport.current)}
@@ -416,7 +420,7 @@ export function DiagramPane() {
         )}
         {menu && selected && (
           <div className="context-menu menu" role="menu" style={{ left: menu.x, top: menu.y }} onPointerDown={(e) => e.stopPropagation()}>
-            {editable &&
+            {canEdit &&
               elementActions.map((a) => (
                 <button key={a.id} role="menuitem" className={`menu-item${a.danger ? ' danger' : ''}`} onClick={() => triggerAction(a)}>
                   <span>{a.title}</span>
@@ -466,7 +470,7 @@ export function DiagramPane() {
         )}
       </div>
       {panelOpen && (plugin.inspect || plugin.tables) && (
-        <PropertyPanel key={plugin.type} plugin={plugin} selected={selected?.ref ?? null} selectedFrom={selected?.range?.from ?? null} editable={editable} />
+        <PropertyPanel key={plugin.type} plugin={plugin} selected={selected?.ref ?? null} selectedFrom={selected?.range?.from ?? null} editable={canEdit} />
       )}
       <div className="pane-footer">
         {plugin.actions?.some((a) => a.key === 'Tab')
