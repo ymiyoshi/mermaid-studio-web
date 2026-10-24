@@ -476,4 +476,4 @@ Phase 0〜4 をすべて実装した。実装の中で決めたこと:
 | 図の削除 | ゴミ箱で 30 日保持 | 即時削除 |
 | URL 長の警告しきい値 | 8,000 文字 | — |
 | テンプレート集 | 各図種につき 1〜3 個用意する | なし |
-| ホスティング先 | 未定（静的ホスティングならどこでも可） | GitHub Pages / Cloudflare Pages |
+| ホスティング先 | GitHub Pages（`.github/workflows/deploy.yml`。サブパス `/<リポジトリ名>/` に置くので、ビルド時に `--base` を渡す。ヘッダーを付けられないため `frame-ancestors` は未対応） | Cloudflare（Workers Static Assets。`_headers` でヘッダーを付けられる） |

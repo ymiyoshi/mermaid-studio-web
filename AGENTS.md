@@ -21,6 +21,7 @@ npm run build      # 型チェック + 本番ビルド
 - **undo は自前の履歴ツリーだけ。** CodeMirror の `history()` 拡張を入れない（入れると undo が 2 系統になる）。
 - **外部に通信しない。** CDN や外部 API を使わない（本番ビルドの CSP は `connect-src 'self'`）。図の内容をサーバーに送らない。
 - **mermaid は常に `securityLevel: 'strict'`。** 共有リンクの内容は信頼できない入力として扱う。
+- **パスを `/` 始まりで書かない。** GitHub Pages のサブパス（`/<リポジトリ名>/`）で動かすため、アプリの中から `public/` のファイルを参照するときは `import.meta.env.BASE_URL` を前に付ける。
 - **IME を壊さない。** 変換中（`composing`）は反映しない、変換確定の Enter（`isComposing`）で閉じない、という処理は、入力欄に触れるときも残す。
 
 ## コードの置き場所と依存の向き

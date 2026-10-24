@@ -14,6 +14,12 @@ npm run build    # 型チェック + 本番ビルド（dist/、CSP 付き）
 npm run preview  # 本番ビルドの確認
 ```
 
+## 公開（GitHub Pages）
+
+`main` に push すると、`.github/workflows/deploy.yml` がテストを通したうえで `https://<ユーザー名>.github.io/<リポジトリ名>/` に公開する。初回だけ、リポジトリの Settings → Pages で Source を「GitHub Actions」にする。
+
+サブパスに置くので、ビルド時に `--base "/<リポジトリ名>/"` を渡している。アプリの中で `public/` のファイルを参照するときは、`/favicon.svg` のような絶対パスではなく `import.meta.env.BASE_URL` を前に付ける。
+
 ## テスト
 
 | 種類 | 場所 | 内容 |

@@ -35,7 +35,8 @@ export function Header() {
         ☰
       </button>
       <div className="brand">
-        <img src="/favicon.svg" alt="" width={22} height={22} />
+        {/* GitHub Pages ではサブパス（/<リポジトリ名>/）に置くので、base からの相対にする */}
+        <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" width={22} height={22} />
         <span>{t('app.title')}</span>
       </div>
       <FileMenu />
