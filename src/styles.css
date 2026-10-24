@@ -670,6 +670,30 @@ select:focus-visible {
   background: rgba(47, 111, 228, 0.28) !important;
 }
 
+/* 入力補完の候補（暗い配色でも読めるように、アプリの色に合わせる） */
+.editor .cm-tooltip {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+
+.editor .cm-tooltip-autocomplete > ul > li[aria-selected] {
+  background: var(--select);
+  color: #fff;
+}
+
+.editor .cm-completionDetail {
+  color: var(--muted);
+  font-style: normal;
+  margin-left: 1em;
+}
+
+.editor .cm-tooltip-autocomplete > ul > li[aria-selected] .cm-completionDetail {
+  color: inherit;
+}
+
 /* ---- 図ビュー ---- */
 .diagram-pane {
   position: relative;

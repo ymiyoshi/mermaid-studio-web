@@ -148,6 +148,17 @@ test('シーケンス図: 参加者とメッセージをドラッグで並べ替
   expect((await historyLabels(page)).slice(-2)).toEqual(['参加者 S を移動', 'メッセージを移動']);
 });
 
+test('エディタで打つと、図の中の名前を補完できる', async ({ page }) => {
+  await openApp(page);
+  await setEditorText(page, 'flowchart LR\n  Kensaku[検索] --> B\n  ');
+  await page.keyboard.type('Ken');
+  await expect(page.locator('.cm-tooltip-autocomplete')).toContainText('Kensaku');
+  // 候補が出た直後（75ms）の Enter は、誤操作を防ぐため CodeMirror が確定に使わない
+  await page.waitForTimeout(150);
+  await page.keyboard.press('Enter');
+  await expect.poll(() => editorText(page)).toContain('--> B\n  Kensaku');
+});
+
 test('円グラフは表で編集できる', async ({ page }) => {
   await openApp(page);
   await newFromTemplate(page, '円グラフ');

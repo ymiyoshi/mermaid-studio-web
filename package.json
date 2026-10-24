@@ -14,6 +14,7 @@
     "perf": "playwright test --config perf/playwright.config.ts"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "6.20.4",
     "@codemirror/commands": "6.11.1",
     "@codemirror/language": "6.13.1",
     "@codemirror/lint": "6.9.7",

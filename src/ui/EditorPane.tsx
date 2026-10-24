@@ -14,6 +14,7 @@ import { lintGutter, setDiagnostics, type Diagnostic } from '@codemirror/lint';
 import { applyChanges, editorBus, redo, registerEditorFlush, setSelection, undo, useSession } from '../core/session';
 import { useRender } from '../render/pipeline';
 import { mermaidHighlighting, mermaidLanguage } from '../render/mermaidLanguage';
+import { mermaidCompletion } from '../render/completion';
 import type { Sel } from '../core/history';
 
 // CodeMirror 標準の history() は使わない。undo はアプリの履歴ツリーが一元管理する（§8.1）。
@@ -89,6 +90,7 @@ export function EditorPane() {
           bracketMatching(),
           mermaidLanguage,
           mermaidHighlighting,
+          mermaidCompletion,
           lintGutter(),
           historyKeys,
           keymap.of([...defaultKeymap, indentWithTab]),
