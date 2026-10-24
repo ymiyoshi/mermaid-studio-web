@@ -1,5 +1,5 @@
 import { minimalReplace } from '../core/history';
-import { applyChanges, createDoc, normalize, openDoc, setFileBinding, showToast, useSession } from '../core/session';
+import { applyChanges, createDoc, normalize, openDoc, openInitialDoc, setFileBinding, showToast, useSession } from '../core/session';
 import * as store from '../storage/db';
 import type { FileBinding } from '../storage/db';
 import { findMermaidBlocks, replaceMermaidBlock, wrapAsMarkdown } from './markdown';
@@ -82,13 +82,24 @@ export async function openFile() {
   }
 }
 
-export async function importFromHandle(handle: FileSystemFileHandle) {
+/** ファイルを開く処理は 1 本ずつ順に走らせる（同じファイルを続けて開いたときに、図が 2 つできないように） */
+let importing: Promise<void> = Promise.resolve();
+
+export function importFromHandle(handle: FileSystemFileHandle): Promise<void> {
+  const run = importing.then(() => importFromHandleNow(handle));
+  importing = run.catch(() => {});
+  return run;
+}
+
+async function importFromHandleNow(handle: FileSystemFileHandle) {
   // 同じファイルを既に開いていれば、その図を開く（履歴を引き継ぐ）
   const docs = useSession.getState().docs;
   for (const b of await store.listFileBindings()) {
     if (!b.handle || !docs.some((d) => d.id === b.docId && d.deletedAt === null)) continue;
     if (await b.handle.isSameEntry(handle)) {
       await openDoc(b.docId);
+      // いま渡されたハンドルに置き換える（保存してあるハンドルは、再起動の後などに許可が切れていることがある）
+      if (b.handle !== handle && useSession.getState().current?.id === b.docId) await setFileBinding({ ...b, handle });
       await checkExternalChange(true);
       return;
     }
@@ -118,6 +129,43 @@ export async function importFile(file: File, handle: FileSystemFileHandle | null
   });
 }
 
+/** OS から渡されたファイルを、順に開く（フォルダは無視する） */
+export async function openLaunchedFiles(files: readonly FileSystemHandle[]) {
+  for (const handle of files) {
+    if (handle.kind !== 'file') continue;
+    try {
+      await importFromHandle(handle as FileSystemFileHandle);
+    } catch (e) {
+      reportError(e);
+    }
+  }
+}
+
+/**
+ * OS から渡されたファイルを開く（PWA のファイルの関連付け。manifest の file_handlers）。
+ * アプリとしてインストールした Chromium 系で、.mmd / .mermaid をこのアプリで開いたときに渡される。
+ * 起動処理より前に呼ぶ（起動処理が途中で失敗しても、受け取りは止めない）。ファイルは ready（起動処理の完了）の後に開く。
+ * 返り値: 起動時にファイルを渡されたか（渡されたなら、起動処理は最初の図を開かない）
+ */
+export function watchLaunchFiles(ready: Promise<void>): Promise<boolean> {
+  const queue = window.launchQueue;
+  if (!queue) return Promise.resolve(false);
+  let launched!: (v: boolean) => void;
+  const result = new Promise<boolean>((r) => (launched = r));
+  queue.setConsumer((params) => {
+    const files = params.files.filter((h) => h.kind === 'file');
+    launched(files.length > 0);
+    void ready.then(async () => {
+      await openLaunchedFiles(files);
+      // 起動時に渡されたファイルを 1 つも開けなかったら（読めなかったなど）、いつもの最初の図を開く
+      if (!useSession.getState().current) await openInitialDoc();
+    });
+  });
+  // 起動時のファイルは setConsumer の直後に渡される。アプリとして起動したときだけ少し待つ（ブラウザのタブでは待たない）
+  const standalone = typeof matchMedia === 'function' && matchMedia('(display-mode: standalone)').matches;
+  setTimeout(() => launched(false), standalone ? 100 : 0);
+  return result;
+}
 /** ドラッグ＆ドロップで読み込む。getAsFileSystemHandle はイベント中に同期的に呼ぶ必要がある */
 export function importFromDrop(e: DragEvent) {
   const item = [...(e.dataTransfer?.items ?? [])].find((i) => i.kind === 'file');

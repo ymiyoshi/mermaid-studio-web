@@ -405,6 +405,59 @@ test('「共有リンクをコピー」したリンクを別の利用者が開�
   await other.close();
 });
 
+test('アプリとして .mmd を開いたとき（launchQueue）、そのファイルを図として開く', async ({ page }) => {
+  // OS の関連付けは試せないので、ページを読み込む前に launchQueue の代わりを置き、受け取る関数にファイルを渡す
+  await page.addInitScript(() => {
+    class Handle {
+      kind = 'file';
+      name = '関連付け.mmd';
+      async getFile() {
+        return new File(['flowchart LR\n  P[渡された] --> Q'], this.name, { lastModified: 1 });
+      }
+      async isSameEntry(other: unknown) {
+        return other === this;
+      }
+    }
+    const w = window as unknown as { __launch?: (p: unknown) => void };
+    // Chrome には本物の launchQueue があり、代入では置き換わらないので、プロパティごと定義し直す
+    Object.defineProperty(window, 'launchQueue', { configurable: true, value: { setConsumer: (c: (p: unknown) => void) => (w.__launch = c) } });
+    (window as unknown as { __handle: unknown }).__handle = new Handle();
+  });
+  await openApp(page);
+  await page.waitForFunction(() => typeof (window as unknown as { __launch?: unknown }).__launch === 'function');
+  await page.evaluate(() => {
+    const w = window as unknown as { __launch: (p: unknown) => void; __handle: unknown };
+    w.__launch({ files: [w.__handle] });
+  });
+  await expect(page.locator('.title-input')).toHaveValue('関連付け');
+  await expect(node(page, '渡された')).toBeVisible();
+});
+
+test('ファイルを渡されて起動したとき、見本の図を作らずにそのファイルだけを開く', async ({ page }) => {
+  // Chrome は、起動時のファイルを setConsumer の直後に渡す
+  await page.addInitScript(() => {
+    class Handle {
+      kind = 'file';
+      name = '起動.mmd';
+      async getFile() {
+        return new File(['flowchart LR\n  S[起動で渡された] --> T'], this.name, { lastModified: 1 });
+      }
+      async isSameEntry(other: unknown) {
+        return other === this;
+      }
+    }
+    const handle = new Handle();
+    Object.defineProperty(window, 'launchQueue', {
+      configurable: true,
+      value: { setConsumer: (c: (p: unknown) => void) => queueMicrotask(() => c({ files: [handle] })) },
+    });
+  });
+  await page.goto('/');
+  await expect(node(page, '起動で渡された')).toBeVisible();
+  await expect(page.locator('.title-input')).toHaveValue('起動');
+  await expect(page.locator('.sidebar .doc-open')).toHaveCount(1);
+});
+
 test('画像として書き出す（PNG のダウンロード）', async ({ page }) => {
   await openApp(page);
   await page.keyboard.press('Control+Shift+E');

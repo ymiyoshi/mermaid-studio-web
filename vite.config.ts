@@ -54,6 +54,10 @@ export default defineConfig({
         background_color: '#f6f7f9',
         theme_color: '#e0366b',
         icons: [{ src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }],
+        // .mmd / .mermaid をこのアプリで開けるようにする（インストールした Chromium 系のみ。受け取りは io/files.ts の watchLaunchFiles）
+        // ファイルを開くたびに新しいウィンドウが開く（launch_handler は既定のまま。focus-existing にすると、アイコンから
+        // 2 つ目のウィンドウを開けなくなる）。同じ図を開いているウィンドウがあれば、新しいほうは読み取り専用になる（§8.5）
+        file_handlers: [{ action: '.', accept: { 'text/vnd.mermaid': ['.mmd', '.mermaid'] } }],
       },
     }),
   ],

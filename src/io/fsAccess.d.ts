@@ -27,7 +27,17 @@ interface FileSystemHandle {
   requestPermission?(descriptor?: FileSystemHandlePermissionDescriptor): Promise<PermissionState>;
 }
 
+/** PWA のファイルの関連付け（File Handling API）で、OS から渡されたファイル */
+interface LaunchParams {
+  readonly files: readonly FileSystemHandle[];
+}
+
+interface LaunchQueue {
+  setConsumer(consumer: (params: LaunchParams) => void): void;
+}
+
 interface Window {
+  launchQueue?: LaunchQueue;
   showOpenFilePicker?(options?: OpenFilePickerOptions): Promise<FileSystemFileHandle[]>;
   showSaveFilePicker?(options?: SaveFilePickerOptions): Promise<FileSystemFileHandle>;
 }

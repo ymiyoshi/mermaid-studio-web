@@ -32,6 +32,7 @@ export {
   duplicateFromHistory,
   init,
   openDoc,
+  openInitialDoc,
   purgeDoc,
   reloadDocList,
   restoreDoc,
