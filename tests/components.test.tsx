@@ -96,6 +96,60 @@ describe('FieldInput', () => {
     fireEvent.change(screen.getByLabelText('形'), { target: { value: 'circle' } });
     await waitFor(() => expect(text()).toBe('flowchart LR\n  A((開始)) --> B\n'));
   });
+
+  describe('色の欄', () => {
+    const renderFill = () => {
+      const fill = flowchartPlugin.inspect!(SRC, { kind: 'node', id: 'A' }).find((f) => f.id === 'fill')!;
+      expect(fill.type).toBe('color');
+      render(
+        <FieldInput
+          field={fill}
+          disabled={false}
+          build={(src, v) => flowchartPlugin.setProperty!(src, { kind: 'node', id: 'A' }, 'fill', v)}
+          historyLabel="塗りを変更"
+        />,
+      );
+    };
+    const openPalette = () => fireEvent.click(screen.getByRole('button', { name: 'カラーパレット' }));
+
+    it('パレットの色を選ぶと反映し、1 回選ぶごとに履歴 1 ステップにする', async () => {
+      renderFill();
+      openPalette();
+      fireEvent.click(screen.getByRole('button', { name: '#dc2626' }));
+      await waitFor(() => expect(text()).toContain('style A fill:#dc2626'));
+      // 選んだら閉じる
+      expect(screen.queryByRole('group', { name: 'カラーパレット' })).toBeNull();
+      openPalette();
+      fireEvent.click(screen.getByRole('button', { name: '#2563eb' }));
+      await waitFor(() => expect(text()).toContain('style A fill:#2563eb'));
+      expect(text()).not.toContain('#dc2626');
+      expect(labels()).toEqual(['作成', '塗りを変更', '塗りを変更']);
+    });
+
+    it('その他の色からも選べる', async () => {
+      renderFill();
+      openPalette();
+      const custom = screen.getByLabelText('その他の色');
+      fireEvent.focus(custom);
+      fireEvent.change(custom, { target: { value: '#123456' } });
+      await waitFor(() => expect(text()).toContain('style A fill:#123456'));
+    });
+
+    it('文字でも打てる（red のような色の名前も）', async () => {
+      renderFill();
+      const input = screen.getByLabelText('塗りの色');
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: 'red' } });
+      await waitFor(() => expect(text()).toContain('style A fill:red'));
+    });
+
+    it('Escape で閉じる', () => {
+      renderFill();
+      openPalette();
+      fireEvent.keyDown(screen.getByRole('button', { name: '#dc2626' }), { key: 'Escape' });
+      expect(screen.queryByRole('group', { name: 'カラーパレット' })).toBeNull();
+    });
+  });
 });
 
 describe('TagEditor', () => {

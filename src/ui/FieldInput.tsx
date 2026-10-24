@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import type { ChangeSpec } from '@codemirror/state';
 import { applyDiagramChange, useSession } from '../core/session';
 import { LatestValueApplier } from './latestApplier';
+import { PALETTE, isCssColor, toHex } from './colors';
 import { t } from '../i18n';
 
 // プロパティパネルと表の入力欄。
 // 文字の入力は 1 打鍵ごとにテキストへ反映し、入力欄にフォーカスしている間の変更は履歴上 1 ステップにまとめる。
 // 構文が壊れる値は反映を保留し、入力欄を赤くする（§6.2）。
+// 色の欄は、文字で打てる入力欄に、パレット（よく使う色・その他の色）を開くボタンを添える。
 
 export interface FieldSpec {
   type: 'text' | 'number' | 'select' | 'color';
@@ -38,6 +40,8 @@ export function FieldInput({ field, disabled, build, historyLabel, className }: 
   buildRef.current = build;
   const labelRef = useRef(historyLabel);
   labelRef.current = historyLabel;
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const colorRef = useRef<HTMLSpanElement>(null);
   const applier = useRef<LatestValueApplier | null>(null);
   applier.current ??= new LatestValueApplier(
     async (next) => {
@@ -64,6 +68,16 @@ export function FieldInput({ field, disabled, build, historyLabel, className }: 
       setInvalid(false);
     }
   }, [field.value]);
+
+  // パレットの外を押したら閉じる
+  useEffect(() => {
+    if (!paletteOpen) return;
+    const close = (e: PointerEvent) => {
+      if (!colorRef.current?.contains(e.target as Node)) setPaletteOpen(false);
+    };
+    addEventListener('pointerdown', close);
+    return () => removeEventListener('pointerdown', close);
+  }, [paletteOpen]);
 
   const change = (v: string) => {
     setLocal(v);
@@ -102,10 +116,10 @@ export function FieldInput({ field, disabled, build, historyLabel, className }: 
       </select>
     );
   }
-  return (
+  const input = (
     <input
       {...common}
-      type={field.type === 'number' ? 'number' : field.type === 'color' ? 'color' : 'text'}
+      type={field.type === 'number' ? 'number' : 'text'}
       value={local}
       placeholder={field.placeholder}
       readOnly={field.readonly}
@@ -127,5 +141,68 @@ export function FieldInput({ field, disabled, build, historyLabel, className }: 
         e.stopPropagation();
       }}
     />
+  );
+  if (field.type !== 'color') return input;
+
+  /** パレットで選んだ色。1 回選ぶごとに履歴 1 ステップにする */
+  const pick = (v: string) => {
+    session.current = crypto.randomUUID();
+    change(v);
+  };
+  const off = disabled || field.readonly;
+  return (
+    <span
+      className="color-input"
+      ref={colorRef}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && paletteOpen) {
+          e.stopPropagation();
+          setPaletteOpen(false);
+        }
+      }}
+    >
+      {input}
+      <button
+        type="button"
+        className={`color-swatch${isCssColor(local) ? '' : ' empty'}`}
+        style={isCssColor(local) ? { background: local.trim() } : undefined}
+        aria-label={t('color.palette')}
+        title={t('color.palette')}
+        aria-expanded={paletteOpen}
+        disabled={off}
+        onClick={() => setPaletteOpen((v) => !v)}
+      />
+      {paletteOpen && !off && (
+        <span className="color-palette" role="group" aria-label={t('color.palette')}>
+          {PALETTE.flat().map((c) => (
+            <button
+              key={c}
+              type="button"
+              className={`color-chip${toHex(local) === c ? ' current' : ''}`}
+              style={{ background: c }}
+              title={c}
+              aria-label={c}
+              aria-pressed={toHex(local) === c}
+              onClick={() => {
+                pick(c);
+                setPaletteOpen(false);
+              }}
+            />
+          ))}
+          {/* 外側の行が label なので、ここは label にしない（label の入れ子は不正） */}
+          <span className="color-custom">
+            <input
+              type="color"
+              aria-label={t('color.custom')}
+              value={toHex(local) ?? '#000000'}
+              // 色を選ぶ画面を開いている間（つまみを動かしている間）の変更は、履歴 1 ステップにまとめる
+              onFocus={() => (session.current = crypto.randomUUID())}
+              onChange={(e) => change(e.target.value)}
+            />
+            <span aria-hidden="true">{t('color.custom')}</span>
+          </span>
+        </span>
+      )}
+    </span>
   );
 }

@@ -161,14 +161,6 @@ function BulkFields({ plugin, source, refs, editable }: { plugin: DiagramPlugin;
 const THEME_PATH = ['config', 'theme'];
 const colorPath = (key: string) => ['config', 'themeVariables', key];
 
-/** 色の入力欄に渡せる #rrggbb にする（#abc は #aabbcc に。読めない色は null） */
-function toHex(v: string): string | null {
-  const s = v.trim().toLowerCase();
-  if (/^#[0-9a-f]{6}$/.test(s)) return s;
-  if (/^#[0-9a-f]{3}$/.test(s)) return '#' + [...s.slice(1)].map((c) => c + c).join('');
-  return null;
-}
-
 /**
  * テーマ: 図の先頭の設定（frontmatter の config.theme と config.themeVariables）を編集する。
  * 書き換えるのは frontmatter の対象の行だけ。図の本文には触れない
@@ -199,13 +191,11 @@ function ThemeFields({ source, editable }: { source: string; editable: boolean }
               <span>{c.label}</span>
               <span className="color-field">
                 <FieldInput
-                  field={{ type: 'color', label: c.label, value: toHex(raw) ?? '#000000' }}
-                  className={raw ? '' : 'unset'}
+                  field={{ type: 'color', label: c.label, value: raw, placeholder: t('theme.unset') }}
                   disabled={!editable}
                   historyLabel={t('history.prop', { name: c.label })}
                   build={(src, v) => setFrontmatterValue(src, colorPath(c.key), v)}
                 />
-                <code className="muted small">{raw || t('theme.unset')}</code>
                 {raw && (
                   <button className="icon-btn" title={t('theme.clear')} disabled={!editable} onClick={() => void clear(colorPath(c.key), c.label)}>
                     ✕
