@@ -2,12 +2,15 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useRender } from '../render/pipeline';
 import { applyDiagramChange, revealRange, showToast, useSession } from '../core/session';
 import { pluginFor } from '../plugins/registry';
-import { refKey, sameRef, type ActionResult, type DiagramAction, type DiagramTarget, type ElementRef } from '../plugins/types';
+import { isPositional, refKey, sameRef, type ActionResult, type DiagramAction, type DiagramTarget, type ElementRef } from '../plugins/types';
 import { InlineLabelEditor, type LabelSession } from './InlineLabelEditor';
 import { PropertyPanel } from './PropertyPanel';
+import { ErrorBanner } from './ErrorBanner';
 import { getSetting, putSetting } from '../storage/db';
 import { DRAG_THRESHOLD_PX, fixSvgSize, rectIn, unionRect, usePanZoom, type Rect, type ViewBox } from './usePanZoom';
 import { contains, findDrop, markContainers, type DropCandidate, type DropSpot } from './reorderDrop';
+import { DIAGRAM_COMMAND_EVENT, type DiagramCommand } from './commands';
+import { composeEach } from '../plugins/source';
 import { t } from '../i18n';
 
 /** 再描画をまたいで同じ要素を指すためのキー。意味上の参照があればそれを使う */
@@ -53,9 +56,12 @@ export function DiagramPane() {
 
   const viewport = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLDivElement>(null);
-  const { view, fit, zoomBy, scrollIntoView, beginDrag, moveDrag, endDrag } = usePanZoom(viewport, canvas);
+  const { view, fit, zoomBy, scrollIntoView, beginDrag, moveDrag, endDrag } = usePanZoom(viewport, canvas, () => endReorder());
   const [targets, setTargets] = useState<DiagramTarget[]>([]);
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  // 選択中の要素（先頭が主な選択。Shift / Ctrl を押しながらのクリックで足し引きする）
+  const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
+  const selectedKey = selectedKeys[0] ?? null;
+  const setSelectedKey = (k: string | null) => setSelectedKeys(k ? [k] : []);
   const [session, setSession] = useState<LabelSession | null>(null);
   const [connect, setConnect] = useState<{ action: DiagramAction; from: ElementRef } | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -68,6 +74,19 @@ export function DiagramPane() {
       void putSetting('panelOpen', !v);
       return !v;
     });
+  // コマンドパレットからの操作
+  const commandRef = useRef<(cmd: DiagramCommand) => void>(() => {});
+  commandRef.current = (cmd) => {
+    if (cmd === 'fit') fit();
+    else if (cmd === 'zoomIn') zoomBy(1.25);
+    else if (cmd === 'zoomOut') zoomBy(1 / 1.25);
+    else if (cmd === 'togglePanel') togglePanel();
+  };
+  useEffect(() => {
+    const on = (e: Event) => commandRef.current((e as CustomEvent<DiagramCommand>).detail);
+    addEventListener(DIAGRAM_COMMAND_EVENT, on);
+    return () => removeEventListener(DIAGRAM_COMMAND_EVENT, on);
+  }, []);
   const [renderTick, setRenderTick] = useState(0);
   const [toolbarRect, setToolbarRect] = useState<Rect | null>(null);
   const fittedFor = useRef<string | null>(null);
@@ -79,8 +98,17 @@ export function DiagramPane() {
   const dragKey = drag?.key ?? null;
 
   const plugin = pluginFor(diagramType);
+  // 図の要素の位置とソースの範囲（targets）が今のテキストと合っているか。ラベルの直接編集と並べ替えはこれが要る
   const editable = !readOnly && !stale && status === 'ok';
+  // 編集してよいか。描き直しを待つ間も、パネル・表と、意味上の参照で動く操作（Tab・Delete など）は使える。
+  // これらはいまのソースから変更を作り直し、applyDiagramChange が検証するので、図が古くても壊れない
+  const canEdit = !readOnly && (status === 'ok' || status === 'pending') && svg !== null;
   const selected = targets.find((x) => keyOf(x) === selectedKey) ?? null;
+  // まとめて編集する要素（2 つ以上選んだとき）
+  const multi = useMemo(
+    () => (selectedKeys.length > 1 ? selectedKeys.map((k) => targets.find((x) => keyOf(x) === k)?.ref).filter((r): r is ElementRef => !!r) : []),
+    [selectedKeys, targets],
+  );
 
   const startLabelEdit = (target: DiagramTarget) => {
     const base = { key: crypto.randomUUID(), targetKey: keyOf(target), original: target.label };
@@ -145,12 +173,12 @@ export function DiagramPane() {
     for (const x of targets) {
       const k = keyOf(x);
       x.el.classList.toggle('mmd-target', x.range !== null || x.ref !== undefined);
-      x.el.classList.toggle('mmd-selected', k === selectedKey);
+      x.el.classList.toggle('mmd-selected', selectedKeys.includes(k));
       x.el.classList.toggle('mmd-cursor', k === cursorKey && k !== selectedKey);
       x.el.classList.toggle('mmd-connect-from', !!connect && sameRef(x.ref, connect.from));
       x.el.classList.toggle('mmd-dragging', k === dragKey);
     }
-  }, [targets, selectedKey, cursorKey, connect, dragKey]);
+  }, [targets, selectedKeys, cursorKey, connect, dragKey]);
 
   // 選択中の要素の操作ボタンの位置。ラベルが要素の外にある（メッセージの本文は線の上など）ので、
   // 要素とラベルを合わせた範囲の上に置き、ラベルを覆わない（覆うとダブルクリックやドラッグができない）
@@ -189,9 +217,23 @@ export function DiagramPane() {
     }
   };
 
+  /** 選んだ要素をまとめて消す（要素ごとの削除の操作を順に当て、履歴は 1 ステップにする） */
+  /** 描いた図が今のテキストと合っているか（番号で指す要素は、合っているときだけ操作する） */
+  const isFresh = () => useSession.getState().current?.text.toString() === svgSource;
+  const usable = (ref: ElementRef) => !isPositional(ref) || isFresh();
+
+  const deleteMany = async (refs: ElementRef[]) => {
+    const source = useSession.getState().current?.text.toString();
+    if (source === undefined || !refs.every(usable)) return;
+    const del = (kind: string) => plugin.actions?.find((a) => a.key === 'Delete' && a.arity === 1 && applies(a, { kind, id: '' }));
+    const change = composeEach(source, refs, (src, ref) => del(ref.kind)?.run(src, [ref])?.change ?? null, isPositional);
+    if (!change) return showToast(t('action.unsupported'));
+    await commit({ change, label: t('bulk.deleted', { n: String(refs.length) }) }, true);
+  };
+
   const runAction = async (action: DiagramAction, refs: ElementRef[]) => {
     const source = useSession.getState().current?.text.toString();
-    if (source === undefined || !editable) return;
+    if (source === undefined || !canEdit || !refs.every(usable)) return;
     await commit(action.run(source, refs), action.danger);
   };
 
@@ -287,6 +329,14 @@ export function DiagramPane() {
       setConnect(null);
       return;
     }
+    // Shift / Ctrl を押しながらのクリック: まとめて編集する要素に足す・外す
+    // 描き直しを待つ間は、番号で指す要素を選ばない（古い図の番号は、今のテキストの別の要素を指すことがある）
+    if (hit?.ref && !usable(hit.ref)) return;
+    if ((e.shiftKey || e.ctrlKey || e.metaKey) && hit?.ref) {
+      const k = keyOf(hit);
+      setSelectedKeys((ks) => (ks.includes(k) ? ks.filter((x) => x !== k) : [...ks, k]));
+      return;
+    }
     // クリック: 要素を選択し、ソースの該当箇所を表示する
     setSelectedKey(hit ? keyOf(hit) : null);
     if (hit?.range) revealRange(hit.range.from, hit.range.to);
@@ -301,13 +351,20 @@ export function DiagramPane() {
       else setSelectedKey(null);
       return;
     }
-    if (!editable || !selected) return;
+    if (!canEdit || !selected) return;
     const key = e.key === 'Backspace' ? 'Delete' : e.key;
+    if (multi.length > 1) {
+      if (key === 'Delete') {
+        e.preventDefault();
+        void deleteMany(multi);
+      }
+      return;
+    }
     const bound = selected.ref ? elementActions.find((a) => a.key === key && a.arity === 1) : undefined;
     if (bound && selected.ref) {
       e.preventDefault();
       void runAction(bound, [selected.ref]);
-    } else if (e.key === 'Enter' || e.key === 'F2') {
+    } else if ((e.key === 'Enter' || e.key === 'F2') && editable) {
       e.preventDefault();
       startLabelEdit(selected);
     }
@@ -316,7 +373,7 @@ export function DiagramPane() {
   // 右クリック: 要素に使える操作のメニュー
   const onContextMenu = (e: React.MouseEvent) => {
     const hit = targetAt(document.elementFromPoint(e.clientX, e.clientY));
-    if (!hit) return;
+    if (!hit || (hit.ref && !usable(hit.ref))) return;
     e.preventDefault();
     setSelectedKey(keyOf(hit));
     const vp = viewport.current!.getBoundingClientRect();
@@ -341,16 +398,14 @@ export function DiagramPane() {
       <div className="pane-toolbar">
         <span className="pane-title">{diagramType ?? '—'}</span>
         {toolbarActions.map((a) => (
-          <button key={a.id} className="btn" disabled={!editable} onClick={() => triggerAction(a)}>
+          <button key={a.id} className="btn" disabled={!canEdit} onClick={() => triggerAction(a)}>
             {a.title}
           </button>
         ))}
         <span className="spacer" />
-        {(plugin.inspect || plugin.tables) && (
-          <button className={`btn${panelOpen ? ' active' : ''}`} onClick={togglePanel} aria-pressed={panelOpen}>
-            {t('panel.toggle')}
-          </button>
-        )}
+        <button className={`btn${panelOpen ? ' active' : ''}`} onClick={togglePanel} aria-pressed={panelOpen}>
+          {t('panel.toggle')}
+        </button>
         <button className="icon-btn" title={t('toolbar.zoomOut')} onClick={() => zoomBy(1 / 1.25)}>
           −
         </button>
@@ -362,13 +417,8 @@ export function DiagramPane() {
           {t('toolbar.fit')}
         </button>
       </div>
-      {status === 'error' && error && (
-        <div className="error-banner" role="alert">
-          <strong>{svg ? t('error.banner') : t('error.bannerNoSvg')}</strong>
-          {error.line && <span>{t('error.line', { line: String(error.line) })}</span>}
-          <pre>{error.message.split('\n').slice(0, 4).join('\n')}</pre>
-        </div>
-      )}
+      {status === 'error' && error && <ErrorBanner error={error} hasSvg={svg !== null} />}
+
       {connect && (
         <div className="connect-banner" role="status">
           {connect.action.prompt}
@@ -396,7 +446,7 @@ export function DiagramPane() {
         />
         {status === 'empty' && <div className="diagram-empty">{t('diagram.empty')}</div>}
         {drag?.line && <div className="drop-indicator" style={drag.line} aria-hidden />}
-        {editable && !session && !connect && !menu && selected?.ref && toolbarRect && buttonActions.length > 0 && (
+        {canEdit && !session && !connect && !menu && multi.length === 0 && selected?.ref && toolbarRect && buttonActions.length > 0 && (
           <div
             className="element-toolbar"
             style={toolbarPosition(toolbarRect, viewport.current)}
@@ -416,7 +466,7 @@ export function DiagramPane() {
         )}
         {menu && selected && (
           <div className="context-menu menu" role="menu" style={{ left: menu.x, top: menu.y }} onPointerDown={(e) => e.stopPropagation()}>
-            {editable &&
+            {canEdit &&
               elementActions.map((a) => (
                 <button key={a.id} role="menuitem" className={`menu-item${a.danger ? ' danger' : ''}`} onClick={() => triggerAction(a)}>
                   <span>{a.title}</span>
@@ -465,8 +515,8 @@ export function DiagramPane() {
           />
         )}
       </div>
-      {panelOpen && (plugin.inspect || plugin.tables) && (
-        <PropertyPanel key={plugin.type} plugin={plugin} selected={selected?.ref ?? null} selectedFrom={selected?.range?.from ?? null} editable={editable} />
+      {panelOpen && (
+        <PropertyPanel key={plugin.type} plugin={plugin} selected={selected?.ref ?? null} selectedFrom={selected?.range?.from ?? null} multi={multi} editable={canEdit} />
       )}
       <div className="pane-footer">
         {plugin.actions?.some((a) => a.key === 'Tab')

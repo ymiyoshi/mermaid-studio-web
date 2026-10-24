@@ -3,20 +3,21 @@ import type { DiagramPlugin, DiagramTarget, PropertyField, SourceRange } from '.
 import { labelText, withGeneric } from './generic';
 import { indentOf, uniqueId } from './source';
 import { addChild, addSibling, deleteSubtree, moveSibling, parseOutline, type OutlineNode } from './outline';
+import { t } from '../i18n';
 
 // mindmap のプラグイン（設計書 §7.3 Phase 3）。
 // ノードはインデントで親子を表す。SVG のノード（node_<番号>）は、ソースのノードの行と同じ順番に並ぶ。
 
-const NEW_TOPIC = '新しいトピック';
+const NEW_TOPIC = t('mm.newTopic');
 
 /** 形の括弧。長いものから順に試す */
 export const MINDMAP_SHAPES = [
-  { name: 'circle', label: '円', open: '((', close: '))' },
-  { name: 'bang', label: '爆発', open: '))', close: '((' },
-  { name: 'hexagon', label: '六角形', open: '{{', close: '}}' },
-  { name: 'cloud', label: '雲', open: ')', close: '(' },
-  { name: 'rounded', label: '角丸', open: '(', close: ')' },
-  { name: 'square', label: '四角', open: '[', close: ']' },
+  { name: 'circle', label: t('mm.shape.circle'), open: '((', close: '))' },
+  { name: 'bang', label: t('mm.shape.bang'), open: '))', close: '((' },
+  { name: 'hexagon', label: t('mm.shape.hexagon'), open: '{{', close: '}}' },
+  { name: 'cloud', label: t('mm.shape.cloud'), open: ')', close: '(' },
+  { name: 'rounded', label: t('mm.shape.rounded'), open: '(', close: ')' },
+  { name: 'square', label: t('mm.shape.square'), open: '[', close: ']' },
 ];
 
 /** ノードに付く行（アイコンとクラス） */
@@ -96,15 +97,15 @@ export const mindmapPlugin: DiagramPlugin = {
     const m = mindNodes(source)[Number(ref.id)];
     if (!m) return [];
     return [
-      { id: 'label', label: 'テキスト', type: 'text', value: source.slice(m.label.from, m.label.to) },
+      { id: 'label', label: t('mm.field.text'), type: 'text', value: source.slice(m.label.from, m.label.to) },
       {
         id: 'shape',
-        label: '形',
+        label: t('mm.field.shape'),
         type: 'select',
         value: m.shape?.name ?? 'default',
-        options: [{ value: 'default', label: '標準' }, ...MINDMAP_SHAPES.map((s) => ({ value: s.name, label: s.label }))],
+        options: [{ value: 'default', label: t('mm.shape.default') }, ...MINDMAP_SHAPES.map((s) => ({ value: s.name, label: s.label }))],
       },
-      { id: 'depth', label: '階層', type: 'text', value: String(m.node.depth), readonly: true },
+      { id: 'depth', label: t('mm.field.depth'), type: 'text', value: String(m.node.depth), readonly: true },
     ];
   },
 
@@ -119,7 +120,7 @@ export const mindmapPlugin: DiagramPlugin = {
   actions: [
     {
       id: 'add-child',
-      title: '＋ 子トピック',
+      title: t('mm.action.addChild'),
       arity: 1,
       appliesTo: ['topic'],
       key: 'Tab',
@@ -130,19 +131,19 @@ export const mindmapPlugin: DiagramPlugin = {
         const change = addChild(m.node, NEW_TOPIC);
         // 新しいノードは、親の部分木の最後の次の番号になる
         const newIndex = lastIndexIn(m.node) + 1;
-        return { change, label: 'トピックを追加', focus: { kind: 'topic', id: String(newIndex) } };
+        return { change, label: t('mm.history.add'), focus: { kind: 'topic', id: String(newIndex) } };
       },
     },
     {
       id: 'add-sibling',
-      title: '＋ 兄弟トピック',
+      title: t('mm.action.addSibling'),
       arity: 1,
       appliesTo: ['topic'],
       run(source, [ref]) {
         const m = mindNodes(source)[Number(ref.id)];
         if (!m || !m.node.parent) return null;
         const change = addSibling(m.node, NEW_TOPIC);
-        return { change, label: 'トピックを追加', focus: { kind: 'topic', id: String(lastIndexIn(m.node) + 1) } };
+        return { change, label: t('mm.history.add'), focus: { kind: 'topic', id: String(lastIndexIn(m.node) + 1) } };
       },
     },
     {
@@ -153,7 +154,7 @@ export const mindmapPlugin: DiagramPlugin = {
       run(source, [ref]) {
         const m = mindNodes(source)[Number(ref.id)];
         const change = m && moveSibling(source, m.node, -1);
-        return change ? { change, label: 'トピックを上へ移動' } : null;
+        return change ? { change, label: t('mm.history.moveUp') } : null;
       },
     },
     {
@@ -164,12 +165,12 @@ export const mindmapPlugin: DiagramPlugin = {
       run(source, [ref]) {
         const m = mindNodes(source)[Number(ref.id)];
         const change = m && moveSibling(source, m.node, 1);
-        return change ? { change, label: 'トピックを下へ移動' } : null;
+        return change ? { change, label: t('mm.history.moveDown') } : null;
       },
     },
     {
       id: 'delete',
-      title: '削除',
+      title: t('plg.delete'),
       arity: 1,
       appliesTo: ['topic'],
       key: 'Delete',
@@ -178,7 +179,7 @@ export const mindmapPlugin: DiagramPlugin = {
         const m = mindNodes(source)[Number(ref.id)];
         // 根は消さない（mindmap には根が 1 つ必要）
         if (!m || !m.node.parent) return null;
-        return { change: deleteSubtree(source, m.node), label: 'トピックを削除（子も含む）' };
+        return { change: deleteSubtree(source, m.node), label: t('mm.history.delete') };
       },
     },
   ],

@@ -118,3 +118,9 @@ export const sameRef = (a: ElementRef | undefined | null, b: ElementRef | undefi
   !!a && !!b && a.kind === b.kind && a.id === b.id;
 
 export const refKey = (r: ElementRef) => `${r.kind}:${r.id}`;
+
+/**
+ * 番号（ソースの中の何番目か）で指す参照か（エッジ・メッセージ・遷移など）。
+ * こうした参照は、他の要素を消したり足したりすると別の要素を指すようになるので、描いた図が今のテキストと合っているときだけ使う
+ */
+export const isPositional = (r: ElementRef) => /^\d+(:\d+)*$/.test(r.id);

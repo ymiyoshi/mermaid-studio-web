@@ -1,6 +1,48 @@
-// 最小限の i18n。現在は日本語のみ（設計書 §10）。英語は辞書を追加するだけで対応できる。
+import * as flowchartLocale from './locales/flowchart';
+import * as sequenceLocale from './locales/sequence';
+import * as dataLocale from './locales/data';
+import * as graphLocale from './locales/graph';
+import * as miscLocale from './locales/misc';
+import { EN_CORE } from './locales/coreEn';
 
-const ja = {
+// i18n（設計書 §10）。日本語と英語。画面の文言はここ、図種プラグインの文言は src/locales/ の分野ごとの辞書に置く。
+// 英語の辞書は Record<キー, string> なので、訳し忘れは型チェックで分かる。
+// プラグインの操作名などはモジュールを読み込んだときに文言が決まるので、言語を変えたらページを読み込み直す。
+
+export type Lang = 'ja' | 'en';
+
+/** 言語は、モジュールを読み込む前に決まっている必要があるので、IndexedDB ではなく localStorage に持つ */
+const LANG_KEY = 'mermaid-studio-lang';
+
+function initialLang(): Lang {
+  try {
+    const v = localStorage.getItem(LANG_KEY);
+    if (v === 'ja' || v === 'en') return v;
+  } catch {
+    // 使えない環境（テスト・制限のあるブラウザ）では日本語
+  }
+  return 'ja';
+}
+
+let lang: Lang = initialLang();
+
+export const getLang = () => lang;
+
+/** 日付や並び替えに使うロケール */
+export const locale = () => (lang === 'en' ? 'en-US' : 'ja-JP');
+
+/** 言語を変えて、ページを読み込み直す */
+export function setLang(next: Lang) {
+  try {
+    localStorage.setItem(LANG_KEY, next);
+  } catch {
+    // 覚えられなくても、今回だけ切り替える
+  }
+  lang = next;
+  location.reload();
+}
+
+const core = {
   'app.title': 'Mermaid Studio',
   'doc.untitled': '無題の図',
   'doc.new': '新規',
@@ -35,6 +77,28 @@ const ja = {
   'error.banner': '構文エラー: 最後に正常だった図を表示しています。図からは編集できません。',
   'error.bannerNoSvg': '構文エラー: 正常に描画できる版がまだありません。テキストを直すと図が表示されます。',
   'error.line': '{line} 行目',
+  'error.original': 'mermaid のエラー（原文）',
+  'err.unknownType': '図の種類「{word}」が分かりません。1 行目には flowchart や sequenceDiagram などの図種を書きます。',
+  'err.fixType': '「{type}」に直す',
+  'err.unclosed': '{line} 行目の「{open}」が閉じていません。',
+  'err.fixClose': '「{close}」で閉じる',
+  'err.extraEnd': '{line} 行目の end に対応する枠（subgraph や loop など）がありません。',
+  'err.fixRemoveLine': 'この end の行を消す',
+  'err.notClosed': '{line} 行目の {word} が end で閉じていません。',
+  'err.fixAddEnd': '最後に end を足す',
+  'err.reservedEnd': '「end」は枠を閉じる予約語なので、そのままではノードの名前に使えません。',
+  'err.fixRenameEnd': '「End」に直す',
+  'err.flowArrow': '{line} 行目の矢印は「-->」と書きます（「->」は使えません）。',
+  'err.fixArrow': '「-->」に直す',
+  'err.seqColon': '{line} 行目: メッセージは「送り手->>受け手: 本文」のように、本文の前に「:」を書きます。',
+  'err.pieColon': '{line} 行目: 円グラフの値は「"名前" : 値」のように「:」で区切ります。',
+  'err.fixColon': '「:」を入れる',
+  'err.classBrace': 'クラスの「{」が「}」で閉じていません。',
+  'err.atLine': '{line} 行目: ',
+  'err.unexpectedEnd': '途中で終わっています。閉じていない括弧や、足りない end がないか確かめてください。',
+  'err.unexpected': '「{token}」がここに来るはずのない場所にあります。前後の書き方を確かめてください。',
+  'err.generic': '書き方が正しくありません。',
+  'err.applied': 'エラーを直す: {label}',
   'diagram.empty': 'テキストを入力すると、ここに図が表示されます',
   'diagram.hint': 'ダブルクリックでラベルを編集 ・ ドラッグで移動 ・ ホイールで拡大縮小',
   'diagram.hintActions': 'クリックで選択 ・ Tab で次の要素を追加 ・ ダブルクリック / Enter でラベルを編集 ・ ドラッグで移動',
@@ -126,15 +190,97 @@ const ja = {
   'history.pruneRun': '分岐を削除',
   'history.pruned': '{n} ステップを削除しました',
   'history.steps': '{n} ステップ',
+  'present.open': '発表モード（図を全画面で順に見せる）',
+  'present.title': '発表モード',
+  'present.tag': '見せる図',
+  'present.allTags': 'すべての図',
+  'present.order': '並び順',
+  'present.created': '作成した順',
+  'present.keys': '← → / Space で送る ・ 画面の左右をクリックでも送れる ・ Esc で終わる',
+  'present.start': '{n} 枚で始める',
+  'present.exit': '終わる (Esc)',
+  'snippet.open': '部品集（よく使う図の一部を登録・差し込み）',
+  'snippet.title': '部品集',
+  'snippet.name': '部品の名前',
+  'snippet.namePlaceholder': '部品の名前（省略すると 1 行目）',
+  'snippet.addSelection': '選んだ範囲を登録',
+  'snippet.addBody': '図の本文を登録',
+  'snippet.search': '部品を探す',
+  'snippet.empty': 'まだ部品がありません。エディタで範囲を選んで「選んだ範囲を登録」を押すと、ここから差し込めるようになります。',
+  'snippet.insert': '差し込む',
+  'snippet.remove': '部品を消す',
+  'snippet.added': '部品「{name}」を登録しました',
+  'snippet.inserted': '部品「{name}」を差し込む',
+  'theme.tab': 'テーマ',
+  'theme.heading': 'この図のテーマ',
+  'theme.theme': 'テーマ',
+  'theme.appDefault': '（画面の設定に従う）',
+  'theme.unset': '未設定',
+  'theme.clear': '設定を外す',
+  'theme.cleared': '{name}の設定を外す',
+  'theme.hint': '図の先頭の設定（frontmatter の config）に書きます。色の細かい指定は、テーマを base にしたときにすべて効きます。',
+  'bulk.heading': '{n} 個の{kind}',
+  'bulk.mixedKinds': '要素',
+  'bulk.mixed': '（いろいろ）',
+  'bulk.noFields': 'まとめて変えられるプロパティがありません',
+  'bulk.differentKinds': '種類の違う要素はまとめて変えられません（Delete でまとめて消すことはできます）',
+  'bulk.hint': 'Shift / Ctrl を押しながらクリックで選択に足す・外す ・ Delete でまとめて消す',
+  'bulk.prop': '{n} 個の{name}を変更',
+  'bulk.deleted': '{n} 個の要素を削除',
+  'lang.label': '言語',
+  'cmd.switchLang': 'English（英語）に切り替える',
+  'cmd.title': 'コマンド',
+  'cmd.placeholder': '操作や図の名前で探す（↑↓ で選んで Enter）',
+  'cmd.empty': '該当する操作がありません',
+  'cmd.groupEdit': '編集',
+  'cmd.groupFile': 'ファイル',
+  'cmd.groupView': '表示',
+  'cmd.groupNew': '新しい図',
+  'cmd.groupOpen': '図を開く',
+  'cmd.togglePanel': 'プロパティパネルを表示・隠す',
+  'cmd.theme': 'テーマを {theme} にする',
+  'compare.title': '版を比べる',
+  'compare.withHead': 'この版と今の版を図で比べる',
+  'compare.before': '前の版',
+  'compare.after': '後の版',
+  'compare.swap': '左右を入れ替える',
+  'compare.close': '閉じる',
+  'compare.head': '（今の版）',
+  'compare.tip': '（分岐の先）',
+  'compare.added': '足した {n}',
+  'compare.removed': '消した {n}',
+  'compare.changed': '変えた {n}',
+  'compare.lines': 'テキスト: +{added} −{removed} 行',
+  'timelapse.open': '作った過程を再生（タイムラプス）',
+  'timelapse.title': '作った過程を再生',
+  'timelapse.play': '▶ 再生',
+  'timelapse.pause': '⏸ 一時停止',
+  'timelapse.speed': '速さ',
+  'timelapse.position': '再生位置',
+  'timelapse.video': '動画（WebM）で書き出す',
+  'timelapse.cancelVideo': '書き出しをやめる（{done} / {total}）',
+  'timelapse.fileSuffix': '作った過程',
+  'timelapse.videoFailed': '動画を作れませんでした（ほかのタブで動画を書き出していないか確かめてください）',
+  'timelapse.sampled': '履歴が長いので、{total} 版のうち {n} 版を間引いて再生しています',
+  'compare.noElementDiff': '図の種類が違うか、描けない版があるため、要素では比べられません',
   'storage.usage': '保存領域 {used} / {quota}',
   'storage.warn': '保存領域の使用率が {pct}% です。古い図や履歴を整理してください。',
   'storage.notPersisted': '永続ストレージが許可されていません。ブラウザがデータを消去する可能性があります。',
 } as const;
 
+const ja = { ...core, ...flowchartLocale.ja, ...sequenceLocale.ja, ...dataLocale.ja, ...graphLocale.ja, ...miscLocale.ja };
+
 export type MessageKey = keyof typeof ja;
 
+export type CoreKey = keyof typeof core;
+
+const coreEn: Record<CoreKey, string> = EN_CORE;
+
+const en: Record<MessageKey, string> = { ...coreEn, ...flowchartLocale.en, ...sequenceLocale.en, ...dataLocale.en, ...graphLocale.en, ...miscLocale.en };
+
 export function t(key: MessageKey, params?: Record<string, string>): string {
-  let s: string = ja[key];
-  if (params) for (const [k, v] of Object.entries(params)) s = s.replaceAll(`{${k}}`, v);
+  let s: string = (lang === 'en' ? en : ja)[key];
+  // 置き換える側を関数にする（文字列だと、利用者の文字列の $& や $$ が置き換えの記法として読まれる）
+  if (params) for (const [k, v] of Object.entries(params)) s = s.replaceAll(`{${k}}`, () => v);
   return s;
 }

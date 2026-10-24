@@ -14,6 +14,7 @@ import { tokenRegex } from '../src/plugins/source';
 import { piePlugin } from '../src/plugins/dataPlugins';
 import { deleteRow, moveRow, setCell, tableRows } from '../src/plugins/table';
 import { findMermaidBlocks, replaceMermaidBlock } from '../src/io/markdown';
+import { BLOCK_SHAPES, blockPlugin } from '../src/plugins/block';
 
 const RUNS = 100;
 
@@ -225,6 +226,70 @@ describe('Markdown のブロックの性質', () => {
         expect(out.slice(0, after[0].from)).toBe(source.slice(0, blocks[0].from));
       }),
       { numRuns: 200 },
+    );
+  });
+});
+
+describe('block 図の操作の性質', () => {
+  const BIDS = ['a', 'b', 'c', 'd', 'e'];
+  const item = fc.record({
+    id: fc.constantFrom(...BIDS),
+    shape: fc.option(fc.constantFrom(...BLOCK_SHAPES.filter((s) => s.name !== 'asymmetric')), { nil: null }),
+    width: fc.option(fc.integer({ min: 2, max: 3 }), { nil: null }),
+  });
+  const itemText = (x: { id: string; shape: { open: string; close: string } | null; width: number | null }) =>
+    `${x.id}${x.shape ? `${x.shape.open}"${x.id.toUpperCase()}"${x.shape.close}` : ''}${x.width ? `:${x.width}` : ''}`;
+  const blockDiagram = fc
+    .record({
+      cols: fc.option(fc.integer({ min: 1, max: 4 }), { nil: null }),
+      rows: fc.array(fc.array(item, { minLength: 1, maxLength: 3 }), { minLength: 1, maxLength: 3 }),
+      group: fc.option(fc.array(item, { minLength: 1, maxLength: 2 }), { nil: null }),
+      edges: fc.array(fc.tuple(fc.constantFrom(...BIDS), fc.constantFrom(...BIDS)), { maxLength: 3 }),
+      comment: fc.boolean(),
+    })
+    .map(({ cols, rows, group, edges, comment }) => {
+      // 同じ ID を 2 回書かない（mermaid は同じ ID のブロックを 1 つにまとめる）
+      const used = new Set<string>();
+      const uniq = (xs: { id: string; shape: { open: string; close: string } | null; width: number | null }[]) =>
+        xs.filter((x) => !used.has(x.id) && used.add(x.id));
+      const lines = ['block-beta'];
+      if (cols) lines.push(`  columns ${cols}`);
+      if (comment) lines.push('  %% メモ');
+      for (const r of rows) {
+        const xs = uniq(r);
+        if (xs.length) lines.push(`  ${xs.map(itemText).join(' ')}`);
+      }
+      if (group) {
+        const xs = uniq(group);
+        if (xs.length) lines.push('  block:g', `    ${xs.map(itemText).join(' ')}`, '  end');
+      }
+      for (const [x, y] of edges) if (used.has(x) && used.has(y) && x !== y) lines.push(`  ${x} --> ${y}`);
+      return lines.join('\n') + '\n';
+    });
+
+  const blockOp = fc.oneof(
+    fc.record({ t: fc.constant('delete'), id: fc.constantFrom(...BIDS, 'g') }),
+    fc.record({ t: fc.constant('add-next'), id: fc.constantFrom(...BIDS, 'g') }),
+    fc.record({ t: fc.constant('shape'), id: fc.constantFrom(...BIDS), v: fc.constantFrom(...BLOCK_SHAPES.map((s) => s.name)) }),
+    fc.record({ t: fc.constant('width'), id: fc.constantFrom(...BIDS, 'g'), v: fc.constantFrom('', '1', '2', '3') }),
+    fc.record({ t: fc.constant('label'), id: fc.constantFrom(...BIDS), v: fc.constantFrom('ラベル', 'x (y)', '') }),
+  );
+
+  it('どの操作の結果も mermaid の構文として正しく、コメント行は変わらない', async () => {
+    await fc.assert(
+      fc.asyncProperty(blockDiagram, blockOp, async (source, o) => {
+        fc.pre(await parses(source));
+        const ref = { kind: 'block-item', id: o.id };
+        const spec =
+          o.t === 'delete' || o.t === 'add-next'
+            ? (blockPlugin.actions!.find((a) => a.id === o.t)!.run(source, [ref])?.change ?? null)
+            : blockPlugin.setProperty!(source, ref, o.t, (o as { v: string }).v);
+        if (!spec) return;
+        const out = apply(source, spec);
+        expect(await parses(out), out).toBe(true);
+        expect(comments(out)).toEqual(comments(source));
+      }),
+      { numRuns: RUNS },
     );
   });
 });

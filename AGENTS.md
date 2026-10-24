@@ -6,9 +6,10 @@
 
 ```sh
 npm install        # .npmrc の legacy-peer-deps=true が必要（npm 10 の依存解決が落ちるため。消さない）
-npm run typecheck  # tsc（tests/ と e2e/ も対象）
-npm test           # Vitest（300 件前後。数秒で終わる）
-npm run test:e2e   # Playwright。本番ビルドを作って vite preview（4173 番）で配信し、インストール済みの Chrome で動かす
+npm run typecheck  # tsc（src・tests は tsconfig.json、e2e・perf は tsconfig.e2e.json）
+npm test           # Vitest（380 件前後。数秒で終わる）
+npm run test:e2e   # Playwright。本番ビルドを作って vite preview（4173 番）で配信し、インストール済みの Chrome で動かす（動画の書き出しの e2e/video.spec.ts は、ほかが終わってから単独で走る）
+npm run perf       # §11 の応答時間を測る（失敗にはしない。結果は表で出る）
 npm run build      # 型チェック + 本番ビルド
 ```
 
@@ -44,10 +45,11 @@ npm run build      # 型チェック + 本番ビルド
 - IndexedDB を使うテストは `import 'fake-indexeddb/auto'` と、`beforeAll` での `db.resetDbConnection()` ＋ データベースの削除で始める。
 - テスト用の File System Access API は `tests/helpers/fakeFs.ts`。偽のハンドルは IndexedDB に保存するとメソッドを失う点に注意（`tests/filesReopen.test.ts` の対処を参照）。
 - E2E の `test.fail(...)` は既知の不具合。直したら `test.fail` を `test` に戻す（そのままだと Playwright が「通ってしまった」として失敗にする）。テストを通すために、テストを消したり弱めたりしない。
-- 既知の不具合（`e2e/app.spec.ts` の末尾）: 編集のたびの描き直しの間、図ビューが「編集できない」扱いになる（入力欄のフォーカスが外れる・直後の Tab / Delete が効かない）。履歴のプレビューを出したまま図を切り替えると画面が消える。
+- 図ビューの `editable`（図の要素の位置とソースの範囲が今のテキストと合っている）と `canEdit`（編集してよい）は別物。描き直しを待つ間も、パネル・表・意味上の参照で動く操作は `canEdit` で使える。ソースの範囲を使う操作（ラベルの直接編集・並べ替え）だけを `editable` で止める。
 
 ## 文章と言語
 
-- UI の文言は日本語。新しい文言は `src/i18n.ts` に足して `t()` で使う（ただしプラグインの中の文言は、まだ直書きのものがある）。
+- UI の文言は日本語（既定）と英語。新しい文言は `t()` で使い、画面の文言は `src/i18n.ts` の `core` と `src/locales/coreEn.ts` に、図種プラグインの文言は `src/locales/<分野>.ts` の `ja` と `en` に足す（en は型で訳し忘れが分かる）。直書きしない。
+- 言語はモジュールを読み込む前に決まる（localStorage）。切り替えたらページを読み込み直すので、`t()` をモジュールの一番外側で呼んでよい。英語の確認は `tests/english.test.ts`。
 - コメント・テストの名前・コミットメッセージも日本語。設計書の節（`§8.3` など）を参照すると、理由をたどれる。
 - 保存形式（IndexedDB）を変えるときは、`src/storage/db.ts` の版を上げて `upgrade` に移行を足す。古いデータを読めなくしない。

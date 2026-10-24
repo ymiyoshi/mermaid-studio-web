@@ -11,16 +11,16 @@ import {
 import { TEMPLATES } from '../core/templates';
 import { thumbSrc, useThumbs } from '../render/thumbs';
 import { getSetting, putSetting, type DocRecord } from '../storage/db';
-import { t } from '../i18n';
+import { locale, t } from '../i18n';
 
-const dateFmt = new Intl.DateTimeFormat('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+const dateFmt = new Intl.DateTimeFormat(locale(), { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 type SortKey = 'updated' | 'created' | 'title';
 
 const SORTS: Record<SortKey, (a: DocRecord, b: DocRecord) => number> = {
   updated: (a, b) => b.updatedAt - a.updatedAt,
   created: (a, b) => b.createdAt - a.createdAt,
-  title: (a, b) => a.title.localeCompare(b.title, 'ja'),
+  title: (a, b) => a.title.localeCompare(b.title, locale()),
 };
 
 export function Sidebar() {

@@ -8,6 +8,10 @@ import { useSession } from './core/session';
 import { ConflictBanner, IoDialogs } from './ui/IoDialogs';
 import { loadLayout, saveLayout, useLayout, type MobileTab } from './ui/layoutStore';
 import { useExternalChangeCheck, useFileDrop, useGlobalShortcuts, useMobile } from './ui/useAppEvents';
+import { CommandPalette } from './ui/CommandPalette';
+import { SnippetsDialog } from './ui/SnippetsDialog';
+import { PresentationView } from './ui/PresentationView';
+import { TimelapseHost } from './ui/TimelapseView';
 import { t } from './i18n';
 
 const MOBILE_TABS: { id: MobileTab; label: () => string }[] = [
@@ -70,6 +74,10 @@ export function App() {
           ))}
         </nav>
         <IoDialogs />
+        {layout.paletteOpen && <CommandPalette onClose={() => useLayout.setState({ paletteOpen: false })} />}
+        {layout.snippetsOpen && <SnippetsDialog onClose={() => useLayout.setState({ snippetsOpen: false })} />}
+        {layout.presentOpen && <PresentationView onClose={closePresentation} />}
+        {layout.timelapseOpen && <TimelapseHost />}
         {toast && (
           <div className="toast" role="status" key={toast.id}>
             {toast.message}
@@ -108,6 +116,10 @@ export function App() {
         )}
       </main>
       <IoDialogs />
+      {layout.paletteOpen && <CommandPalette onClose={() => useLayout.setState({ paletteOpen: false })} />}
+      {layout.snippetsOpen && <SnippetsDialog onClose={() => useLayout.setState({ snippetsOpen: false })} />}
+      {layout.presentOpen && <PresentationView onClose={closePresentation} />}
+      {layout.timelapseOpen && <TimelapseHost />}
       {dragging && <div className="drop-overlay">{t('file.drop')}</div>}
       {toast && (
         <div className="toast" role="status" key={toast.id}>
@@ -119,6 +131,9 @@ export function App() {
 }
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
+
+// 発表モードの全画面の後始末が onClose に頼るので、描画のたびに変わらない関数にする
+const closePresentation = () => useLayout.setState({ presentOpen: false });
 
 function Splitter({ onDrag, onEnd }: { onDrag(dx: number): void; onEnd(): void }) {
   const last = useRef<number | null>(null);

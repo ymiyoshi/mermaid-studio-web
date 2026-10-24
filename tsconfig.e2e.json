@@ -1,0 +1,7 @@
+// E2E（Playwright）と応答時間の計測の型チェック。Node の上で動くので、Node の型を使う（npm run typecheck で一緒に見る）
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "types": ["node"] },
+  "include": ["e2e", "perf", "playwright.config.ts"]
+}
+

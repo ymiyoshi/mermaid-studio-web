@@ -670,6 +670,30 @@ select:focus-visible {
   background: rgba(47, 111, 228, 0.28) !important;
 }
 
+/* 入力補完の候補（暗い配色でも読めるように、アプリの色に合わせる） */
+.editor .cm-tooltip {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+
+.editor .cm-tooltip-autocomplete > ul > li[aria-selected] {
+  background: var(--select);
+  color: #fff;
+}
+
+.editor .cm-completionDetail {
+  color: var(--muted);
+  font-style: normal;
+  margin-left: 1em;
+}
+
+.editor .cm-tooltip-autocomplete > ul > li[aria-selected] .cm-completionDetail {
+  color: inherit;
+}
+
 /* ---- 図ビュー ---- */
 .diagram-pane {
   position: relative;
@@ -700,6 +724,24 @@ select:focus-visible {
   font-family: Consolas, monospace;
   font-size: 11.5px;
   white-space: pre;
+}
+
+.error-banner .error-summary {
+  margin: 2px 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.error-banner .error-fixes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 2px 0;
+}
+
+.error-banner details summary {
+  cursor: pointer;
+  color: var(--muted);
 }
 
 .diagram-viewport {
@@ -1477,4 +1519,376 @@ button.tag {
 .app.mobile .title-input {
   flex: 1 1 auto;
   min-width: 60px;
+}
+
+/* ---- 版を比べる（図で見る差分） ---- */
+.diff-chg {
+  color: var(--warn);
+  font-weight: 700;
+}
+
+.modal.compare-view {
+  width: min(1400px, 100%);
+  height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.compare-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.compare-head h2 {
+  margin: 0 8px 0 0;
+}
+
+.compare-pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  min-width: 0;
+}
+
+.compare-pick select {
+  max-width: 320px;
+}
+
+.compare-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.compare-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 760px) {
+  .compare-body {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+}
+
+.compare-side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--canvas);
+  overflow: hidden;
+}
+
+.compare-side-title {
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.compare-canvas {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+  display: grid;
+  place-items: center;
+}
+
+.compare-canvas svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.compare-text {
+  margin: 0;
+  padding: 10px;
+  font-size: 12px;
+  overflow: auto;
+}
+
+/* 差分の色。図の要素そのもの（ノードの g・エッジの path）に付く */
+.compare-canvas .mmd-diff-add {
+  filter: drop-shadow(0 0 3px #1f9d55) drop-shadow(0 0 2px #1f9d55);
+}
+
+.compare-canvas .mmd-diff-del {
+  filter: drop-shadow(0 0 3px #d93025) drop-shadow(0 0 2px #d93025);
+}
+
+.compare-canvas .mmd-diff-chg {
+  filter: drop-shadow(0 0 3px #e6a700) drop-shadow(0 0 2px #e6a700);
+}
+
+.compare-canvas path.mmd-diff-add {
+  stroke: #1f9d55 !important;
+  stroke-width: 3px !important;
+}
+
+.compare-canvas path.mmd-diff-del {
+  stroke: #d93025 !important;
+  stroke-width: 3px !important;
+}
+
+.compare-canvas path.mmd-diff-chg {
+  stroke: #e6a700 !important;
+  stroke-width: 3px !important;
+}
+
+/* 対応付けが足すクリックの当たり判定（比べる画面では使わない） */
+.compare-canvas .mmd-hit {
+  display: none;
+}
+
+/* ---- タイムラプス ---- */
+.timelapse-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.timelapse-bar input[type='range'] {
+  flex: 1;
+}
+
+.timelapse-step {
+  min-width: 0;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timelapse-stage {
+  flex: 1;
+}
+
+/* ---- コマンドパレット ---- */
+.palette-backdrop {
+  place-items: start center;
+  padding-top: 12vh;
+}
+
+.palette {
+  width: min(560px, 100%);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.palette-input {
+  border: none;
+  border-bottom: 1px solid var(--border);
+  padding: 12px 14px;
+  font-size: 15px;
+  background: transparent;
+  color: var(--text);
+  outline: none;
+}
+
+.palette-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  overflow: auto;
+}
+
+.palette-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13.5px;
+}
+
+.palette-item.active {
+  background: var(--select-soft);
+}
+
+.palette-group {
+  flex: 0 0 auto;
+  min-width: 5.5em;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.palette-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-empty {
+  padding: 10px;
+  font-size: 13px;
+}
+
+/* ---- テーマの編集 ---- */
+.color-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.color-field input[type='color'] {
+  width: 36px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+}
+
+.color-field input[type='color'].unset {
+  opacity: 0.35;
+}
+
+/* ---- 部品集 ---- */
+.modal.snippets-dialog {
+  width: min(640px, 100%);
+}
+
+.snippet-register {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.snippet-register input {
+  flex: 1;
+  min-width: 160px;
+}
+
+.snippet-search {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.snippet-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.snippet-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.snippet-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.snippet-item pre {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+/* ---- 発表モード ---- */
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.field-row > span {
+  min-width: 5em;
+}
+
+.present-list {
+  max-height: 30vh;
+  overflow: auto;
+  margin: 4px 0 8px;
+  padding-left: 1.6em;
+  font-size: 13px;
+}
+
+.presentation {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  background: var(--canvas);
+  color: var(--text);
+}
+
+.presentation-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  cursor: pointer;
+}
+
+/* 縦に長い図も横に長い図も、画面に収める（高さを決めないと、図の高さに合わせて枠が伸びる） */
+.presentation-svg {
+  position: absolute;
+  inset: 3vh 4vw;
+  display: grid;
+  place-items: center;
+}
+
+.presentation-svg svg {
+  max-width: 100% !important;
+  max-height: 100%;
+  width: 100%;
+  height: 100%;
+}
+
+.presentation-error {
+  margin: 3vh 4vw;
+  font-size: 14px;
+  white-space: pre-wrap;
+}
+
+.presentation-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 16px;
+  font-size: 13px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+}
+
+.presentation-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

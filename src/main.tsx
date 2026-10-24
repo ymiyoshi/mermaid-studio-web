@@ -6,7 +6,10 @@ import { startRenderPipeline } from './render/pipeline';
 import { importFromLocationHash, watchShareLinks } from './io/shareActions';
 import { startThumbnails } from './render/thumbs';
 import { preloadMermaid } from './render/mermaid';
+import { getLang } from './i18n';
 import './styles.css';
+
+document.documentElement.lang = getLang();
 
 // 文書の読み込みと並行して mermaid を読み込む
 preloadMermaid();

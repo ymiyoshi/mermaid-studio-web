@@ -3,7 +3,7 @@ import type { Theme } from '../render/mermaid';
 import { FileMenu } from './FileMenu';
 import { TagEditor } from './TagEditor';
 import { togglePane, useLayout } from './layoutStore';
-import { t } from '../i18n';
+import { getLang, setLang, t, type Lang } from '../i18n';
 
 const THEMES: Theme[] = ['default', 'neutral', 'forest', 'dark'];
 
@@ -70,6 +70,12 @@ export function Header() {
         <button className="icon-btn" onClick={redo} disabled={!canRedo} title={t('toolbar.redo')}>
           ↷
         </button>
+        <button className="icon-btn" title={t('present.open')} onClick={() => useLayout.setState({ presentOpen: true })}>
+          📽
+        </button>
+        <button className="icon-btn" title={t('snippet.open')} disabled={!current} onClick={() => useLayout.setState({ snippetsOpen: true })}>
+          🧩
+        </button>
         <button
           className={`icon-btn pane-toggle${historyOpen ? ' active' : ''}`}
           title={t('layout.toggleHistory')}
@@ -78,6 +84,14 @@ export function Header() {
         >
           🕘
         </button>
+        <label className="theme-select">
+          <span>{t('lang.label')}</span>
+          {/* 言語の名前は、それぞれの言語で書く */}
+          <select value={getLang()} onChange={(e) => setLang(e.target.value as Lang)} aria-label={t('lang.label')}>
+            <option value="ja">日本語</option>
+            <option value="en">English</option>
+          </select>
+        </label>
         <label className="theme-select">
           <span>{t('toolbar.theme')}</span>
           <select value={theme} onChange={(e) => setTheme(e.target.value as Theme)}>

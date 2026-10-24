@@ -4,11 +4,12 @@ import { labelText, withGeneric } from './generic';
 import { bodyLines, indentOf, insertLineAfter, rangeInInserted, uniqueId, type SourceLine } from './source';
 import { blockFrom, lastMention, mentions, removeLine, removeLines, renameToken, topLevelEnd, VALID_NAME } from './lineOps';
 import { addHitArea, edgeLabelFor, idFromSvg } from './svg';
+import { t } from '../i18n';
 
 // stateDiagram-v2 のプラグイン（設計書 §7.3 Phase 2）。
 // 状態は SVG の id（…-state-<名前>-<連番>）で、遷移は SVG 上の順番（= ソースの遷移の行の順番）で対応付ける。
 
-const NEW_STATE = '新しい状態';
+const NEW_STATE = t('st.newState');
 
 const TRANSITION = /^(?<indent>\s*)(?<a>\[\*\]|[\p{L}\p{N}_]+)\s*-->\s*(?<b>\[\*\]|[\p{L}\p{N}_]+)\s*(?::\s*(?<label>.*?))?\s*$/du;
 const ALIAS = /^(?<indent>\s*)state\s+"(?<label>[^"]*)"\s+as\s+(?<name>[\p{L}\p{N}_]+)/du;
@@ -123,16 +124,16 @@ export const statePlugin: DiagramPlugin = {
     if (ref?.kind === 'state') {
       const r = stateLabel(source, ref.id);
       return [
-        { id: 'name', label: '状態の名前（ID）', type: 'text', value: ref.id, commitOnBlur: true },
-        { id: 'label', label: '表示名・説明', type: 'text', value: r ? source.slice(r.from, r.to) : '', placeholder: ref.id },
+        { id: 'name', label: t('st.field.name'), type: 'text', value: ref.id, commitOnBlur: true },
+        { id: 'label', label: t('st.field.label'), type: 'text', value: r ? source.slice(r.from, r.to) : '', placeholder: ref.id },
       ];
     }
     if (ref?.kind === 'transition') {
       const tr = parseTransitions(source)[Number(ref.id)];
       if (!tr) return [];
       return [
-        { id: 'ends', label: '遷移', type: 'text', value: `${tr.a} → ${tr.b}`, readonly: true },
-        { id: 'label', label: 'ラベル（イベント）', type: 'text', value: tr.label ? source.slice(tr.label.from, tr.label.to) : '', placeholder: '（なし）' },
+        { id: 'ends', label: t('st.field.ends'), type: 'text', value: `${tr.a} → ${tr.b}`, readonly: true },
+        { id: 'label', label: t('st.field.event'), type: 'text', value: tr.label ? source.slice(tr.label.from, tr.label.to) : '', placeholder: t('plg.none') },
       ];
     }
     return [];
@@ -161,18 +162,18 @@ export const statePlugin: DiagramPlugin = {
   actions: [
     {
       id: 'add-state',
-      title: '＋ 状態',
+      title: t('st.action.addState'),
       arity: 0,
       run(source) {
         const id = uniqueId(source, 'S');
         const { after, indent } = topLevelEnd(source);
         const change = insertLineAfter(source, after, `${indent}state "${NEW_STATE}" as ${id}`);
-        return { change, label: `状態 ${id} を追加`, selAfter: rangeInInserted(change, NEW_STATE), focus: { kind: 'state', id } };
+        return { change, label: t('st.history.addState', { id }), selAfter: rangeInInserted(change, NEW_STATE), focus: { kind: 'state', id } };
       },
     },
     {
       id: 'add-next',
-      title: '＋ 次の状態',
+      title: t('st.action.addNext'),
       arity: 1,
       appliesTo: ['state'],
       key: 'Tab',
@@ -180,32 +181,32 @@ export const statePlugin: DiagramPlugin = {
         const id = uniqueId(source, 'S');
         const { after, indent } = placeAfter(source, from.id);
         const change = insertLineAfter(source, after, `${indent}state "${NEW_STATE}" as ${id}\n${indent}${from.id} --> ${id}`);
-        return { change, label: `状態 ${id} を ${from.id} の次に追加`, selAfter: rangeInInserted(change, NEW_STATE), focus: { kind: 'state', id } };
+        return { change, label: t('st.history.addNext', { id, from: from.id }), selAfter: rangeInInserted(change, NEW_STATE), focus: { kind: 'state', id } };
       },
     },
     {
       id: 'connect',
-      title: '→ 遷移',
+      title: t('st.action.connect'),
       arity: 2,
       appliesTo: ['state'],
-      prompt: '遷移先の状態をクリックしてください（Esc で取り消し）',
+      prompt: t('st.prompt.connect'),
       run(source, [a, b]) {
         const { after, indent } = placeAfter(source, a.id);
         const change = insertLineAfter(source, after, `${indent}${a.id} --> ${b.id}`);
-        return { change, label: `${a.id} → ${b.id} の遷移を追加` };
+        return { change, label: t('st.history.connect', { a: a.id, b: b.id }) };
       },
     },
     {
       id: 'delete',
-      title: '削除',
+      title: t('plg.delete'),
       arity: 1,
       appliesTo: ['state', 'transition'],
       key: 'Delete',
       danger: true,
       run(source, [ref]) {
-        if (ref.kind === 'state') return { change: deleteState(source, ref.id), label: `状態 ${ref.id} を削除` };
+        if (ref.kind === 'state') return { change: deleteState(source, ref.id), label: t('st.history.deleteState', { id: ref.id }) };
         const tr = parseTransitions(source)[Number(ref.id)];
-        return tr && { change: removeLine(source, tr.line), label: `${tr.a} → ${tr.b} の遷移を削除` };
+        return tr && { change: removeLine(source, tr.line), label: t('st.history.deleteTransition', { a: tr.a, b: tr.b }) };
       },
     },
   ],

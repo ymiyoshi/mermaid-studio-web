@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { redo, undo, useSession } from '../core/session';
 import { checkExternalChange, importFromDrop, openFile, saveFile } from '../io/files';
 import { useIo } from '../io/ioStore';
+import { useLayout } from './layoutStore';
 
 // アプリ全体（window）で受け取るイベント。App から切り出したもの。
 
@@ -9,7 +10,7 @@ const isMod = (e: KeyboardEvent) => (e.ctrlKey || e.metaKey) && !e.altKey;
 
 /**
  * キーボードのショートカット。
- * - ファイル操作（Ctrl+S / Ctrl+Shift+S / Ctrl+O / Ctrl+Shift+E）はどこにフォーカスがあっても効かせる
+ * - ファイル操作（Ctrl+S / Ctrl+Shift+S / Ctrl+O / Ctrl+Shift+E）とコマンドパレット（Ctrl+K / Ctrl+Shift+P）は、どこにフォーカスがあっても効かせる
  * - undo / redo は、エディタや入力欄の外にフォーカスがあるときも同じ履歴で行う（§8.1）
  */
 export function useGlobalShortcuts() {
@@ -20,6 +21,7 @@ export function useGlobalShortcuts() {
       if (k === 's') void saveFile({ saveAs: e.shiftKey });
       else if (k === 'o' && !e.shiftKey) void openFile();
       else if (k === 'e' && e.shiftKey) useIo.setState({ exportOpen: true });
+      else if ((k === 'k' && !e.shiftKey) || (k === 'p' && e.shiftKey)) useLayout.setState((s) => ({ paletteOpen: !s.paletteOpen }));
       else return;
       e.preventDefault();
     };
