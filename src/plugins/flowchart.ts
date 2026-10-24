@@ -134,7 +134,7 @@ function endpointOptions(doc: FlowDoc) {
 }
 
 const styleFields = (doc: FlowDoc, id: string): PropertyField[] =>
-  STYLE_FIELDS.map((f) => ({ id: f.key, label: f.label, type: 'text', value: styleProp(doc, id, f.key), placeholder: t('fc.ph.fill') }));
+  STYLE_FIELDS.map((f) => ({ id: f.key, label: f.label, type: 'color', value: styleProp(doc, id, f.key), placeholder: t('fc.ph.fill') }));
 
 const CLASS_DEF_TABLE: TableDef = {
   id: 'classDef',

@@ -149,6 +149,20 @@ test('テーマのタブで、図の先頭の設定（テーマと色）を変�
   expect(errors).toEqual([]);
 });
 
+test('ノードの塗りの色を、カラーパレットから選ぶ', async ({ page }) => {
+  const errors = await openApp(page);
+  await setEditorText(page, 'flowchart LR\n  X[入力] --> Y[出力]');
+  await expect(node(page, '出力')).toBeVisible();
+  await node(page, '入力').click();
+  await page.getByRole('button', { name: 'カラーパレット' }).first().click();
+  await page.getByRole('button', { name: '#fef9c3' }).click();
+  await expect.poll(() => editorText(page)).toContain('  style X fill:#fef9c3');
+  // 描いた図に色が付く
+  await expect.poll(() => node(page, '入力').locator('rect').first().evaluate((el) => getComputedStyle(el).fill)).toBe('rgb(254, 249, 195)');
+  expect((await historyLabels(page)).at(-1)).toBe('塗りの色を変更');
+  expect(errors).toEqual([]);
+});
+
 test('部品集: 選んだ範囲を登録し、再読み込みしてもカーソルの行の下に差し込める', async ({ page }) => {
   await openApp(page);
   await page.locator('.cm-line', { hasText: 'C --> E[終了]' }).click();

@@ -75,7 +75,8 @@ export interface DiagramAction {
 export interface PropertyField {
   id: string;
   label: string;
-  type: 'text' | 'number' | 'select';
+  /** color は文字でも打て、パレットからも選べる欄 */
+  type: 'text' | 'number' | 'select' | 'color';
   value: string;
   options?: { value: string; label: string }[];
   placeholder?: string;

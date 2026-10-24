@@ -1753,17 +1753,84 @@ button.tag {
   min-width: 0;
 }
 
-.color-field input[type='color'] {
-  width: 36px;
+.color-field .color-input {
+  flex: 1;
+}
+
+/* ---- 色の入力欄（文字の欄 + パレット） ---- */
+.color-input {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.color-input > input {
+  flex: 1;
+}
+
+.color-swatch {
+  flex: none;
+  width: 28px;
   height: 24px;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 4px;
-  background: none;
+  cursor: pointer;
 }
 
-.color-field input[type='color'].unset {
-  opacity: 0.35;
+/* 色が無い・読めないときは斜線で「未設定」を表す */
+.color-swatch.empty {
+  background: linear-gradient(to top right, transparent calc(50% - 1px), var(--muted) 50%, transparent calc(50% + 1px)), var(--surface-2);
+}
+
+.color-swatch:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* 行の中で折り返して、入力欄の下に出す（パネルがスクロールしても欠けないように、浮かせない） */
+.color-palette {
+  flex-basis: 100%;
+  display: grid;
+  grid-template-columns: repeat(9, 22px);
+  gap: 4px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.color-chip {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.color-chip.current {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.color-custom {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.prop-row .color-custom input[type='color'] {
+  width: 36px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
 }
 
 /* ---- 部品集 ---- */

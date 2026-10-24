@@ -178,6 +178,8 @@ export const EN_CORE: Record<CoreKey, string> = {
   'theme.unset': 'Not set',
   'theme.clear': 'Clear',
   'theme.cleared': 'Clear {name}',
+  'color.palette': 'Color palette',
+  'color.custom': 'Other color',
   'theme.hint': 'Written to the diagram’s header (frontmatter config). Detailed color settings take full effect when the theme is base.',
   'bulk.heading': '{kind} × {n}',
   'bulk.mixedKinds': 'Element',
