@@ -36,38 +36,39 @@ import { classNames, classOf, frontmatterTitle, linkStyleProp, setClass, setFron
 import { addHitArea, edgeLabels, matchInOrder } from './svg';
 import { topLevelEnd } from './lineOps';
 import { regexParser, type TableDef } from './table';
+import { t } from '../i18n';
 
 // flowchart / graph のプラグイン（設計書 §7.3 Phase 1）。
 // ノードは SVG の id（…-flowchart-<ノード ID>-<連番>）、エッジは data-id（L_<元>_<先>_<連番>）の端点、
 // サブグラフは g.cluster の id（…-<サブグラフ ID>）でソースに対応付ける。
 
-const NEW_LABEL = '新しいノード';
-const NEW_GROUP = '新しいグループ';
+const NEW_LABEL = t('fc.newNode');
+const NEW_GROUP = t('fc.newGroup');
 const DEFAULT_INDENT = '    ';
 
 /** ノード定義の行ではない行（スタイル指定など） */
 const NON_STATEMENT = /^\s*(classDef|class|style|linkStyle|click|subgraph|direction)\b/;
 
 const DIRECTIONS = [
-  { value: 'TB', label: '上から下 (TB)' },
-  { value: 'BT', label: '下から上 (BT)' },
-  { value: 'LR', label: '左から右 (LR)' },
-  { value: 'RL', label: '右から左 (RL)' },
+  { value: 'TB', label: t('fc.dir.TB') },
+  { value: 'BT', label: t('fc.dir.BT') },
+  { value: 'LR', label: t('fc.dir.LR') },
+  { value: 'RL', label: t('fc.dir.RL') },
 ];
 
-const EDGE_ARROWS = [...ARROWS, { value: '~~~', label: '　 見えない線（配置だけ）' }];
-const LENGTHS = [1, 2, 3, 4].map((n) => ({ value: String(n), label: n === 1 ? '標準' : `${n} 段` }));
+const EDGE_ARROWS = [...ARROWS, { value: '~~~', label: t('fc.arrow.invisible') }];
+const LENGTHS = [1, 2, 3, 4].map((n) => ({ value: String(n), label: n === 1 ? t('fc.length.normal') : t('fc.length.n', { n: String(n) }) }));
 
 const SHAPE_OPTIONS = [
   ...SHAPE_CHOICES.map((s) => ({ value: s.name, label: s.label })),
-  ...META_SHAPES.map((s) => ({ value: `@${s.name}`, label: `${s.label}（@{ shape: ${s.name} }）` })),
+  ...META_SHAPES.map((s) => ({ value: `@${s.name}`, label: t('fc.shape.metaOption', { label: s.label, name: s.name }) })),
 ];
 
 /** ノード・サブグラフの見た目（style 行のキー） */
 const STYLE_FIELDS = [
-  { key: 'fill', label: '塗りの色' },
-  { key: 'stroke', label: '枠線の色' },
-  { key: 'color', label: '文字の色' },
+  { key: 'fill', label: t('fc.style.fill') },
+  { key: 'stroke', label: t('fc.style.stroke') },
+  { key: 'color', label: t('fc.style.color') },
 ];
 
 export function nodeIdFromSvg(el: Element): string | null {
@@ -129,23 +130,23 @@ function endpointOptions(doc: FlowDoc) {
   const ids = new Set<string>();
   for (const st of doc.statements) for (const g of st.groups) for (const r of g) ids.add(r.id);
   for (const sg of doc.subgraphs) ids.add(sg.id);
-  return [...ids].map((id) => ({ value: id, label: findSubgraph(doc, id) ? `${id}（サブグラフ）` : id }));
+  return [...ids].map((id) => ({ value: id, label: findSubgraph(doc, id) ? t('fc.endpoint.subgraph', { id }) : id }));
 }
 
 const styleFields = (doc: FlowDoc, id: string): PropertyField[] =>
-  STYLE_FIELDS.map((f) => ({ id: f.key, label: f.label, type: 'text', value: styleProp(doc, id, f.key), placeholder: '例: #ffcc00' }));
+  STYLE_FIELDS.map((f) => ({ id: f.key, label: f.label, type: 'text', value: styleProp(doc, id, f.key), placeholder: t('fc.ph.fill') }));
 
 const CLASS_DEF_TABLE: TableDef = {
   id: 'classDef',
-  title: 'クラス',
+  title: t('fc.class'),
   secondary: true,
   schemas: [
     {
       kind: 'classDef',
-      title: 'クラス',
+      title: t('fc.class'),
       fields: [
-        { name: 'name', label: '名前', type: 'text' },
-        { name: 'props', label: 'スタイル', type: 'text', width: 3 },
+        { name: 'name', label: t('fc.classDef.name'), type: 'text' },
+        { name: 'props', label: t('fc.classDef.props'), type: 'text', width: 3 },
       ],
       parse: regexParser(/^classDef\s+(?<name>\S+)\s+(?<props>.*?)\s*;?$/d),
       format: (v) => `classDef ${v.name} ${v.props}`,
@@ -228,30 +229,30 @@ export const flowchartPlugin: DiagramPlugin = {
     const doc = parseFlowchart(source);
     if (!ref) {
       return [
-        { id: 'direction', label: '向き', type: 'select', value: getDirection(source).replace('TD', 'TB'), options: DIRECTIONS },
-        { id: 'title', label: '題名', type: 'text', value: frontmatterTitle(source), placeholder: '（なし）' },
+        { id: 'direction', label: t('fc.prop.direction'), type: 'select', value: getDirection(source).replace('TD', 'TB'), options: DIRECTIONS },
+        { id: 'title', label: t('fc.prop.title'), type: 'text', value: frontmatterTitle(source), placeholder: t('fc.none') },
       ];
     }
     if (ref.kind === 'node') {
       const label = labelRange(doc, ref.id);
       const shape = shapeValue(source, ref.id);
-      const groups = [{ value: '', label: '（なし）' }, ...doc.subgraphs.map((s) => ({ value: s.id, label: s.id }))];
-      const classes = [{ value: '', label: '（なし）' }, ...classNames(doc).map((c) => ({ value: c, label: c }))];
+      const groups = [{ value: '', label: t('fc.none') }, ...doc.subgraphs.map((s) => ({ value: s.id, label: s.id }))];
+      const classes = [{ value: '', label: t('fc.none') }, ...classNames(doc).map((c) => ({ value: c, label: c }))];
       const cls = classOf(doc, ref.id);
       return [
         { id: 'id', label: 'ID', type: 'text', value: ref.id, commitOnBlur: true },
-        { id: 'label', label: 'ラベル', type: 'text', value: label ? source.slice(label.from, label.to) : ref.id },
-        { id: 'shape', label: '形', type: 'select', value: shape, options: withValue(SHAPE_OPTIONS, shape) },
+        { id: 'label', label: t('fc.prop.label'), type: 'text', value: label ? source.slice(label.from, label.to) : ref.id },
+        { id: 'shape', label: t('fc.prop.shape'), type: 'select', value: shape, options: withValue(SHAPE_OPTIONS, shape) },
         {
           id: 'subgraph',
-          label: 'サブグラフ',
+          label: t('fc.prop.subgraph'),
           type: 'select',
           value: subgraphOf(doc, ref.id)?.id ?? '',
           options: groups,
           // サブグラフの中でエッジの一部として書かれていると、行を移せない
           readonly: !canMoveNode(source, ref.id),
         },
-        { id: 'class', label: 'クラス', type: 'select', value: cls, options: withValue(classes, cls) },
+        { id: 'class', label: t('fc.class'), type: 'select', value: cls, options: withValue(classes, cls) },
         ...styleFields(doc, ref.id),
       ];
     }
@@ -262,13 +263,13 @@ export const flowchartPlugin: DiagramPlugin = {
       const kind = parts?.kind ?? info.arrow;
       const ends = endpointOptions(doc);
       return [
-        { id: 'from', label: '元', type: 'select', value: info.from, options: ends },
-        { id: 'to', label: '先', type: 'select', value: info.to, options: ends },
-        { id: 'label', label: 'ラベル', type: 'text', value: info.label, placeholder: '（なし）' },
-        { id: 'arrow', label: '線の種類', type: 'select', value: kind, options: withValue(EDGE_ARROWS, kind) },
-        { id: 'length', label: '長さ', type: 'select', value: String(parts?.length ?? 1), options: withValue(LENGTHS, String(parts?.length ?? 1)), readonly: !parts },
-        { id: 'stroke', label: '線の色', type: 'text', value: linkStyleProp(doc, info.index, 'stroke'), placeholder: '例: #ff0000' },
-        { id: 'stroke-width', label: '線の太さ', type: 'text', value: linkStyleProp(doc, info.index, 'stroke-width'), placeholder: '例: 3px' },
+        { id: 'from', label: t('fc.prop.from'), type: 'select', value: info.from, options: ends },
+        { id: 'to', label: t('fc.prop.to'), type: 'select', value: info.to, options: ends },
+        { id: 'label', label: t('fc.prop.label'), type: 'text', value: info.label, placeholder: t('fc.none') },
+        { id: 'arrow', label: t('fc.prop.arrow'), type: 'select', value: kind, options: withValue(EDGE_ARROWS, kind) },
+        { id: 'length', label: t('fc.prop.length'), type: 'select', value: String(parts?.length ?? 1), options: withValue(LENGTHS, String(parts?.length ?? 1)), readonly: !parts },
+        { id: 'stroke', label: t('fc.prop.stroke'), type: 'text', value: linkStyleProp(doc, info.index, 'stroke'), placeholder: t('fc.ph.stroke') },
+        { id: 'stroke-width', label: t('fc.prop.strokeWidth'), type: 'text', value: linkStyleProp(doc, info.index, 'stroke-width'), placeholder: t('fc.ph.strokeWidth') },
       ];
     }
     if (ref.kind === 'subgraph') {
@@ -276,8 +277,8 @@ export const flowchartPlugin: DiagramPlugin = {
       if (!sg) return [];
       return [
         { id: 'id', label: 'ID', type: 'text', value: sg.id, commitOnBlur: true, readonly: !sg.idRange },
-        { id: 'title', label: '題名', type: 'text', value: sg.title ? source.slice(sg.title.from, sg.title.to) : '', placeholder: sg.id },
-        { id: 'direction', label: '中の向き', type: 'select', value: sg.direction?.value ?? '', options: [{ value: '', label: '（図と同じ）' }, ...DIRECTIONS] },
+        { id: 'title', label: t('fc.prop.title'), type: 'text', value: sg.title ? source.slice(sg.title.from, sg.title.to) : '', placeholder: sg.id },
+        { id: 'direction', label: t('fc.prop.innerDirection'), type: 'select', value: sg.direction?.value ?? '', options: [{ value: '', label: t('fc.sameAsDiagram') }, ...DIRECTIONS] },
         ...styleFields(doc, sg.id),
       ];
     }
@@ -333,28 +334,28 @@ export const flowchartPlugin: DiagramPlugin = {
   actions: [
     {
       id: 'add-node',
-      title: '＋ ノード',
+      title: t('fc.action.addNode'),
       arity: 0,
       run(source) {
         const id = uniqueId(source, 'N');
         const { after, indent } = topLevelEnd(source, DEFAULT_INDENT);
-        return { ...addLine(source, after, indent, `${id}[${NEW_LABEL}]`, id), label: `ノード ${id} を追加` };
+        return { ...addLine(source, after, indent, `${id}[${NEW_LABEL}]`, id), label: t('fc.history.addNode', { id }) };
       },
     },
     {
       id: 'add-subgraph',
-      title: '＋ サブグラフ',
+      title: t('fc.action.addSubgraph'),
       arity: 0,
       run(source) {
         const id = uniqueId(source, 'G');
         const change = addSubgraph(source, id, NEW_GROUP);
         const selAfter = rangeInInserted(change, NEW_GROUP);
-        return { change, label: `サブグラフ ${id} を追加`, selAfter, focus: { kind: 'subgraph', id } };
+        return { change, label: t('fc.history.addSubgraph', { id }), selAfter, focus: { kind: 'subgraph', id } };
       },
     },
     {
       id: 'add-child',
-      title: '＋ 次のノード',
+      title: t('fc.action.addChild'),
       arity: 1,
       key: 'Tab',
       run(source, [from]) {
@@ -362,12 +363,12 @@ export const flowchartPlugin: DiagramPlugin = {
         const line = lastLineOf(source, from.id);
         const { after, indent } = line ? { after: line, indent: indentOf(line.text) } : topLevelEnd(source, DEFAULT_INDENT);
         const res = addLine(source, after, indent, `${from.id} --> ${id}[${NEW_LABEL}]`, id);
-        return { ...res, change: withLinkStyles(source, res.change), label: `ノード ${id} を ${from.id} の次に追加` };
+        return { ...res, change: withLinkStyles(source, res.change), label: t('fc.history.addChild', { id, from: from.id }) };
       },
     },
     {
       id: 'add-inside',
-      title: '＋ 中にノード',
+      title: t('fc.action.addInside'),
       arity: 1,
       appliesTo: ['subgraph'],
       key: 'Tab',
@@ -377,15 +378,15 @@ export const flowchartPlugin: DiagramPlugin = {
         const id = uniqueId(source, 'N');
         const change = sg && insertIntoSubgraph(doc, sg, `${id}[${NEW_LABEL}]`);
         if (!change) return null;
-        return { change, label: `ノード ${id} を ${ref.id} に追加`, selAfter: rangeInInserted(change, NEW_LABEL), focus: { kind: 'node', id } };
+        return { change, label: t('fc.history.addInside', { id, sg: ref.id }), selAfter: rangeInInserted(change, NEW_LABEL), focus: { kind: 'node', id } };
       },
     },
     {
       id: 'connect',
-      title: '→ 接続',
+      title: t('fc.action.connect'),
       arity: 2,
       appliesTo: ['node', 'subgraph'],
-      prompt: '接続先のノード（またはサブグラフ）をクリックしてください（Esc で取り消し）',
+      prompt: t('fc.action.connectPrompt'),
       run(source, [from, to]) {
         // サブグラフの中に書くと、接続先のノードがそのサブグラフに入ってしまうので、外の行の後ろか図の最後に書く
         const doc = parseFlowchart(source);
@@ -393,12 +394,12 @@ export const flowchartPlugin: DiagramPlugin = {
         const { after, indent } =
           line && isTopLevel(doc, line) ? { after: line, indent: indentOf(line.text) } : topLevelEnd(source, DEFAULT_INDENT);
         const res = addLine(source, after, indent, `${from.id} --> ${to.id}`, null);
-        return { ...res, change: withLinkStyles(source, res.change), label: `${from.id} → ${to.id} を接続` };
+        return { ...res, change: withLinkStyles(source, res.change), label: t('fc.history.connect', { from: from.id, to: to.id }) };
       },
     },
     {
       id: 'insert-node',
-      title: '＋ 間にノード',
+      title: t('fc.action.insertNode'),
       arity: 1,
       appliesTo: ['edge'],
       run(source, [ref]) {
@@ -408,7 +409,7 @@ export const flowchartPlugin: DiagramPlugin = {
         if (!change) return null;
         return {
           change: withLinkStyles(source, change),
-          label: `エッジの間にノード ${id} を追加`,
+          label: t('fc.history.insertNode', { id }),
           selAfter: rangeInInserted(change, NEW_LABEL),
           focus: { kind: 'node', id },
         };
@@ -416,31 +417,31 @@ export const flowchartPlugin: DiagramPlugin = {
     },
     {
       id: 'reverse',
-      title: '⇄ 向きを反転',
+      title: t('fc.action.reverse'),
       arity: 1,
       appliesTo: ['edge'],
       menuOnly: true,
       run(source, [ref]) {
         const info = edgeInfo(source, Number(ref.id));
         const change = info && reconnectEdge(source, info.index, { from: info.to, to: info.from });
-        return change && info && { change, label: `${info.from} → ${info.to} の向きを反転` };
+        return change && info && { change, label: t('fc.history.reverse', { from: info.from, to: info.to }) };
       },
     },
     {
       id: 'group',
-      title: 'サブグラフにまとめる',
+      title: t('fc.action.group'),
       arity: 1,
       menuOnly: true,
       run(source, [ref]) {
         const id = uniqueId(source, 'G');
         const change = groupNode(source, ref.id, id, NEW_GROUP);
         if (!change) return null;
-        return { change, label: `ノード ${ref.id} をサブグラフ ${id} にまとめる`, selAfter: rangeInInserted(change, NEW_GROUP), focus: { kind: 'subgraph', id } };
+        return { change, label: t('fc.history.group', { node: ref.id, id }), selAfter: rangeInInserted(change, NEW_GROUP), focus: { kind: 'subgraph', id } };
       },
     },
     {
       id: 'delete',
-      title: '削除',
+      title: t('fc.action.delete'),
       arity: 1,
       appliesTo: ['node', 'edge'],
       key: 'Delete',
@@ -448,35 +449,35 @@ export const flowchartPlugin: DiagramPlugin = {
       run(source, [ref]) {
         if (ref.kind === 'node') {
           const change = deleteNode(source, ref.id);
-          return change && { change: withLinkStyles(source, change), label: `ノード ${ref.id} を削除` };
+          return change && { change: withLinkStyles(source, change), label: t('fc.history.deleteNode', { id: ref.id }) };
         }
         const info = edgeInfo(source, Number(ref.id));
         const change = deleteEdge(source, Number(ref.id));
-        return change && info && { change: withLinkStyles(source, change), label: `${info.from} → ${info.to} のエッジを削除` };
+        return change && info && { change: withLinkStyles(source, change), label: t('fc.history.deleteEdge', { from: info.from, to: info.to }) };
       },
     },
     {
       id: 'unwrap',
-      title: '枠を外す',
+      title: t('fc.action.unwrap'),
       arity: 1,
       appliesTo: ['subgraph'],
       key: 'Delete',
       danger: true,
       run(source, [ref]) {
         const change = unwrapSubgraph(source, ref.id);
-        return change && { change, label: `サブグラフ ${ref.id} の枠を外す` };
+        return change && { change, label: t('fc.history.unwrap', { id: ref.id }) };
       },
     },
     {
       id: 'delete-subgraph',
-      title: '中身ごと削除',
+      title: t('fc.action.deleteSubgraph'),
       arity: 1,
       appliesTo: ['subgraph'],
       danger: true,
       menuOnly: true,
       run(source, [ref]) {
         const change = deleteSubgraph(source, ref.id);
-        return change && { change: withLinkStyles(source, change), label: `サブグラフ ${ref.id} を中身ごと削除` };
+        return change && { change: withLinkStyles(source, change), label: t('fc.history.deleteSubgraph', { id: ref.id }) };
       },
     },
   ],

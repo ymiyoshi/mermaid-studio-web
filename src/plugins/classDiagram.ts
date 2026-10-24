@@ -4,12 +4,13 @@ import { labelText, withGeneric } from './generic';
 import { bodyLines, indentOf, insertLineAfter, rangeInInserted, uniqueId, type SourceLine } from './source';
 import { blockFrom, insertIntoBlock, lastMention, mentions, removeLine, removeLines, renameToken, topLevelEnd, VALID_NAME } from './lineOps';
 import { addHitArea, idFromSvg, matchInOrder } from './svg';
+import { t } from '../i18n';
 
 // classDiagram のプラグイン（設計書 §7.3 Phase 2）。
 // クラスは SVG の id（…-classId-<名前>-<連番>）で、関係は SVG 上の順番（= ソースの関係の行の順番）で対応付ける。
 
-const NEW_CLASS = '新しいクラス';
-const NEW_MEMBER = '+新しいメンバー';
+const NEW_CLASS = t('cls.newClass');
+const NEW_MEMBER = t('cls.newMember');
 
 const DECL = /^(?<indent>\s*)class\s+(?<name>[\p{L}\p{N}_`~]+)(?:\["(?<label>[^"]*)"\])?/du;
 const REL =
@@ -17,14 +18,14 @@ const REL =
 const ANNOTATION = /^\s*<<(?<ann>[^>]+)>>\s*(?<name>[\p{L}\p{N}_`~]*)\s*$/du;
 
 export const RELATIONS = [
-  { value: '<|--', label: '継承（<|--）' },
-  { value: '*--', label: '合成（*--）' },
-  { value: 'o--', label: '集約（o--）' },
-  { value: '-->', label: '関連（-->）' },
-  { value: '--', label: 'リンク（--）' },
-  { value: '..>', label: '依存（..>）' },
-  { value: '..|>', label: '実現（..|>）' },
-  { value: '..', label: '点線のリンク（..）' },
+  { value: '<|--', label: t('cls.rel.inherit') },
+  { value: '*--', label: t('cls.rel.compose') },
+  { value: 'o--', label: t('cls.rel.aggregate') },
+  { value: '-->', label: t('cls.rel.associate') },
+  { value: '--', label: t('cls.rel.link') },
+  { value: '..>', label: t('cls.rel.depend') },
+  { value: '..|>', label: t('cls.rel.realize') },
+  { value: '..', label: t('cls.rel.dashedLink') },
 ];
 
 const ANNOTATIONS = ['', 'interface', 'abstract', 'service', 'enumeration'];
@@ -174,14 +175,14 @@ export const classPlugin: DiagramPlugin = {
     if (ref?.kind === 'class') {
       const label = classLabel(source, ref.id);
       return [
-        { id: 'name', label: 'クラス名', type: 'text', value: ref.id, commitOnBlur: true },
-        { id: 'label', label: '表示名', type: 'text', value: label ? source.slice(label.from, label.to) : '', placeholder: ref.id },
+        { id: 'name', label: t('cls.field.name'), type: 'text', value: ref.id, commitOnBlur: true },
+        { id: 'label', label: t('cls.field.label'), type: 'text', value: label ? source.slice(label.from, label.to) : '', placeholder: ref.id },
         {
           id: 'annotation',
-          label: '種類',
+          label: t('cls.field.annotation'),
           type: 'select',
           value: annotationOf(source, ref.id)?.value ?? '',
-          options: ANNOTATIONS.map((a) => ({ value: a, label: a ? `<<${a}>>` : '（なし）' })),
+          options: ANNOTATIONS.map((a) => ({ value: a, label: a ? `<<${a}>>` : t('plg.none') })),
         },
       ];
     }
@@ -190,17 +191,17 @@ export const classPlugin: DiagramPlugin = {
       if (!r) return [];
       const rel = r.values.rel!;
       return [
-        { id: 'ends', label: 'クラス', type: 'text', value: `${r.a} — ${r.b}`, readonly: true },
+        { id: 'ends', label: t('cls.field.ends'), type: 'text', value: `${r.a} — ${r.b}`, readonly: true },
         {
           id: 'rel',
-          label: '関係の種類',
+          label: t('cls.field.relType'),
           type: 'select',
           value: rel,
           options: RELATIONS.some((x) => x.value === rel) ? RELATIONS : [{ value: rel, label: rel }, ...RELATIONS],
         },
-        { id: 'label', label: 'ラベル', type: 'text', value: r.values.label ?? '', placeholder: '（なし）' },
-        { id: 'ca', label: `${r.a} 側の多重度`, type: 'text', value: r.values.ca ?? '', placeholder: '例: 1' },
-        { id: 'cb', label: `${r.b} 側の多重度`, type: 'text', value: r.values.cb ?? '', placeholder: '例: 0..*' },
+        { id: 'label', label: t('plg.label'), type: 'text', value: r.values.label ?? '', placeholder: t('plg.none') },
+        { id: 'ca', label: t('cls.field.card', { name: r.a }), type: 'text', value: r.values.ca ?? '', placeholder: t('cls.field.cardAPlaceholder') },
+        { id: 'cb', label: t('cls.field.card', { name: r.b }), type: 'text', value: r.values.cb ?? '', placeholder: t('cls.field.cardBPlaceholder') },
       ];
     }
     return [];
@@ -252,18 +253,18 @@ export const classPlugin: DiagramPlugin = {
   actions: [
     {
       id: 'add-class',
-      title: '＋ クラス',
+      title: t('cls.action.addClass'),
       arity: 0,
       run(source) {
         const id = uniqueId(source, 'Class');
         const { after, indent } = topLevelEnd(source);
         const change = insertLineAfter(source, after, `${indent}class ${id}["${NEW_CLASS}"]`);
-        return { change, label: `クラス ${id} を追加`, selAfter: rangeInInserted(change, NEW_CLASS), focus: { kind: 'class', id } };
+        return { change, label: t('cls.history.addClass', { id }), selAfter: rangeInInserted(change, NEW_CLASS), focus: { kind: 'class', id } };
       },
     },
     {
       id: 'add-member',
-      title: '＋ メンバー',
+      title: t('cls.action.addMember'),
       arity: 1,
       appliesTo: ['class'],
       key: 'Tab',
@@ -271,37 +272,37 @@ export const classPlugin: DiagramPlugin = {
         const block = ownBlock(source, ref.id);
         if (block) {
           const change = insertIntoBlock(block, NEW_MEMBER);
-          return { change, label: `${ref.id} にメンバーを追加`, selAfter: rangeInInserted(change as { from: number; insert: string }, NEW_MEMBER) };
+          return { change, label: t('cls.history.addMember', { id: ref.id }), selAfter: rangeInInserted(change as { from: number; insert: string }, NEW_MEMBER) };
         }
         const line = lastMention(source, ref.id);
         const { after, indent } = line ? { after: line, indent: indentOf(line.text) } : topLevelEnd(source);
         const change = insertLineAfter(source, after, `${indent}${ref.id} : ${NEW_MEMBER}`);
-        return { change, label: `${ref.id} にメンバーを追加`, selAfter: rangeInInserted(change, NEW_MEMBER) };
+        return { change, label: t('cls.history.addMember', { id: ref.id }), selAfter: rangeInInserted(change, NEW_MEMBER) };
       },
     },
     {
       id: 'connect',
-      title: '→ 関係',
+      title: t('cls.action.connect'),
       arity: 2,
       appliesTo: ['class'],
-      prompt: '関係の相手のクラスをクリックしてください（Esc で取り消し）',
+      prompt: t('cls.prompt.connect'),
       run(source, [a, b]) {
         const { after, indent } = topLevelEnd(source);
         const change = insertLineAfter(source, after, `${indent}${a.id} --> ${b.id}`);
-        return { change, label: `${a.id} → ${b.id} の関係を追加` };
+        return { change, label: t('cls.history.connect', { a: a.id, b: b.id }) };
       },
     },
     {
       id: 'delete',
-      title: '削除',
+      title: t('plg.delete'),
       arity: 1,
       appliesTo: ['class', 'relation'],
       key: 'Delete',
       danger: true,
       run(source, [ref]) {
-        if (ref.kind === 'class') return { change: deleteClass(source, ref.id), label: `クラス ${ref.id} を削除` };
+        if (ref.kind === 'class') return { change: deleteClass(source, ref.id), label: t('cls.history.deleteClass', { id: ref.id }) };
         const r = parseRelations(source)[Number(ref.id)];
-        return r && { change: removeLine(source, r.line), label: `${r.a} — ${r.b} の関係を削除` };
+        return r && { change: removeLine(source, r.line), label: t('cls.history.deleteRel', { a: r.a, b: r.b }) };
       },
     },
   ],

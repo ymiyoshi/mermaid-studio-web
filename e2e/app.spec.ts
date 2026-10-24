@@ -400,6 +400,23 @@ test('タッチのピンチで図を拡大する', async ({ browser }) => {
   await context.close();
 });
 
+test('英語の UI に切り替えると、画面と図からの操作が英語になる', async ({ page }) => {
+  const errors = await openApp(page);
+  await page.getByLabel('言語').selectOption('en');
+  // 言語を変えると読み込み直す
+  await expect(page.getByRole('button', { name: '＋ New' })).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  await node(page, '開始').click();
+  await expect(page.locator('.panel-heading')).toHaveText('Node: A');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Escape');
+  await expect.poll(() => editorText(page)).toContain('A --> N1[New node]');
+  expect((await historyLabels(page)).at(-1)).toMatch(/^Add node N1/);
+  await page.getByLabel('Language').selectOption('ja');
+  await expect(page.getByRole('button', { name: '＋ 新規' })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test('狭い画面ではタブで切り替える', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openApp(page);

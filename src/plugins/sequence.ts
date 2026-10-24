@@ -4,15 +4,16 @@ import { genericTargets, labelText } from './generic';
 import { applySpec, bodyLines, escapeRe, indentOf, insertLineAfter, rangeInInserted, uniqueId, type SourceLine } from './source';
 import { addHitArea, matchInOrder } from './svg';
 import { appendTopLevel, removeLine, removeLines, VALID_NAME } from './lineOps';
+import { t } from '../i18n';
 
 // sequenceDiagram のプラグイン。
 // ソースを文（参加者の宣言・メッセージ・注釈・枠など）に分け、SVG の要素とは意味のある値で対応付ける:
 // 参加者は data-id / name、メッセージは端点（data-from / data-to）、注釈は本文、枠（loop / alt など）は種類と条件。
 
-const NEW_PARTICIPANT = '新しい参加者';
-const NEW_MESSAGE = 'メッセージ';
-const NEW_NOTE = 'メモ';
-const NEW_CONDITION = '条件';
+const NEW_PARTICIPANT = t('seq.default.participant');
+const NEW_MESSAGE = t('seq.default.message');
+const NEW_NOTE = t('seq.default.note');
+const NEW_CONDITION = t('seq.default.condition');
 const DEFAULT_INDENT = '    ';
 
 /** mermaid が受け付ける矢印（字句解析器の規則と同じもの）。長いものから試す */
@@ -37,53 +38,53 @@ const AUTONUMBER = /^\s*autonumber\b/i;
 const TITLE = /^\s*title:?\s+(?<text>.*?)\s*$/di;
 
 export const MESSAGE_ARROWS = [
-  { value: '->>', label: '→ 実線の矢印' },
-  { value: '-->>', label: '⇢ 点線の矢印' },
-  { value: '->', label: '― 実線' },
-  { value: '-->', label: '┄ 点線' },
-  { value: '-x', label: '→× 実線・バツ' },
-  { value: '--x', label: '⇢× 点線・バツ' },
-  { value: '-)', label: '→) 非同期' },
-  { value: '--)', label: '⇢) 点線・非同期' },
-  { value: '<<->>', label: '↔ 双方向' },
-  { value: '<<-->>', label: '⇠⇢ 点線・双方向' },
-  { value: '-|\\', label: '⇀ 実線・半分（上）' },
-  { value: '-|/', label: '⇁ 実線・半分（下）' },
-  { value: '--|\\', label: '⇀ 点線・半分（上）' },
-  { value: '--|/', label: '⇁ 点線・半分（下）' },
+  { value: '->>', label: t('seq.arrow.solid') },
+  { value: '-->>', label: t('seq.arrow.dotted') },
+  { value: '->', label: t('seq.arrow.solidOpen') },
+  { value: '-->', label: t('seq.arrow.dottedOpen') },
+  { value: '-x', label: t('seq.arrow.solidCross') },
+  { value: '--x', label: t('seq.arrow.dottedCross') },
+  { value: '-)', label: t('seq.arrow.solidAsync') },
+  { value: '--)', label: t('seq.arrow.dottedAsync') },
+  { value: '<<->>', label: t('seq.arrow.bidirectional') },
+  { value: '<<-->>', label: t('seq.arrow.dottedBidirectional') },
+  { value: '-|\\', label: t('seq.arrow.solidHalfTop') },
+  { value: '-|/', label: t('seq.arrow.solidHalfBottom') },
+  { value: '--|\\', label: t('seq.arrow.dottedHalfTop') },
+  { value: '--|/', label: t('seq.arrow.dottedHalfBottom') },
 ];
 
 export const PARTICIPANT_TYPES = [
-  { value: 'participant', label: '箱（participant）' },
-  { value: 'actor', label: '人（actor）' },
-  { value: 'boundary', label: '境界（boundary）' },
-  { value: 'control', label: '制御（control）' },
-  { value: 'entity', label: '実体（entity）' },
-  { value: 'database', label: 'データベース（database）' },
-  { value: 'collections', label: '集まり（collections）' },
-  { value: 'queue', label: 'キュー（queue）' },
+  { value: 'participant', label: t('seq.participantType.participant') },
+  { value: 'actor', label: t('seq.participantType.actor') },
+  { value: 'boundary', label: t('seq.participantType.boundary') },
+  { value: 'control', label: t('seq.participantType.control') },
+  { value: 'entity', label: t('seq.participantType.entity') },
+  { value: 'database', label: t('seq.participantType.database') },
+  { value: 'collections', label: t('seq.participantType.collections') },
+  { value: 'queue', label: t('seq.participantType.queue') },
 ];
 
 const ACTIVATIONS = [
-  { value: '', label: 'なし' },
-  { value: '+', label: '受け手を活性化（+）' },
-  { value: '-', label: '送り手を非活性化（-）' },
+  { value: '', label: t('seq.activation.none') },
+  { value: '+', label: t('seq.activation.activate') },
+  { value: '-', label: t('seq.activation.deactivate') },
 ];
 
 const NOTE_POSITIONS = [
-  { value: 'right of', label: '右（right of）' },
-  { value: 'left of', label: '左（left of）' },
-  { value: 'over', label: '上に重ねる（over）' },
+  { value: 'right of', label: t('seq.notePos.rightOf') },
+  { value: 'left of', label: t('seq.notePos.leftOf') },
+  { value: 'over', label: t('seq.notePos.over') },
 ];
 
 /** 図から作れる枠の種類（rect の条件は色、box は参加者のまとまりなので除く） */
 const BLOCK_KINDS = [
-  { value: 'loop', label: '繰り返し（loop）' },
-  { value: 'alt', label: '分岐（alt）' },
-  { value: 'opt', label: '省略可（opt）' },
-  { value: 'par', label: '並行（par）' },
-  { value: 'critical', label: '重要（critical）' },
-  { value: 'break', label: '中断（break）' },
+  { value: 'loop', label: t('seq.block.loop') },
+  { value: 'alt', label: t('seq.block.alt') },
+  { value: 'opt', label: t('seq.block.opt') },
+  { value: 'par', label: t('seq.block.par') },
+  { value: 'critical', label: t('seq.block.critical') },
+  { value: 'break', label: t('seq.block.break') },
 ];
 
 /** 枠の種類ごとの区切りのキーワード */
@@ -367,7 +368,7 @@ function moveParticipantBy(source: string, id: string, dir: -1 | 1): ActionResul
   const i = order.indexOf(id);
   const neighbour = i < 0 ? undefined : order[i + dir];
   const change = neighbour === undefined ? null : moveParticipantTo(seq, source, id, neighbour, dir < 0);
-  return change && { change, label: `参加者 ${id} を${dir < 0 ? '左' : '右'}へ移動`, select: { kind: 'participant', id } };
+  return change && { change, label: t(dir < 0 ? 'seq.history.moveParticipantLeft' : 'seq.history.moveParticipantRight', { id }), select: { kind: 'participant', id } };
 }
 
 /** 文（または枠）を、同じ区切りの中の隣の前後へ動かす（↑ ↓ の操作） */
@@ -376,7 +377,7 @@ function moveStatementBy(source: string, ref: ElementRef, dir: -1 | 1): ActionRe
   const me = unitOf(seq, ref);
   const units = me && seq.siblings.get(me.first.index);
   const other = units?.[units.findIndex((u) => u.first.index === me!.first.index) + dir];
-  return me && other ? moveUnit(source, ref, me, other, dir < 0, `${KIND_NAME[ref.kind]}を${dir < 0 ? '上' : '下'}へ移動`) : null;
+  return me && other ? moveUnit(source, ref, me, other, dir < 0, t(dir < 0 ? 'seq.history.moveUp' : 'seq.history.moveDown', { kind: KIND_NAME[ref.kind] })) : null;
 }
 
 function renameParticipant(seq: Seq, from: string, to: string): ChangeSpec[] | null {
@@ -571,15 +572,15 @@ export const sequencePlugin: DiagramPlugin = {
     const seq = parseSequence(source);
     if (!ref) {
       return [
-        { id: 'title', label: '題名', type: 'text', value: seq.title ? source.slice(seq.title.text.from, seq.title.text.to) : '' },
+        { id: 'title', label: t('seq.field.title'), type: 'text', value: seq.title ? source.slice(seq.title.text.from, seq.title.text.to) : '' },
         {
           id: 'autonumber',
-          label: '通し番号',
+          label: t('seq.field.autonumber'),
           type: 'select',
           value: seq.autonumber ? 'on' : 'off',
           options: [
-            { value: 'off', label: '付けない' },
-            { value: 'on', label: '付ける（autonumber）' },
+            { value: 'off', label: t('seq.autonumber.off') },
+            { value: 'on', label: t('seq.autonumber.on') },
           ],
         },
       ];
@@ -588,43 +589,43 @@ export const sequencePlugin: DiagramPlugin = {
     if (ref.kind === 'participant') {
       const d = seq.decls.find((x) => x.id === ref.id);
       return [
-        { id: 'id', label: 'ID', type: 'text', value: ref.id, commitOnBlur: true },
-        { id: 'alias', label: '表示名', type: 'text', value: d?.alias ? source.slice(d.alias.from, d.alias.to) : '', placeholder: ref.id },
-        { id: 'type', label: '種類', type: 'select', value: d?.type ?? 'participant', options: PARTICIPANT_TYPES },
+        { id: 'id', label: t('seq.field.id'), type: 'text', value: ref.id, commitOnBlur: true },
+        { id: 'alias', label: t('seq.field.alias'), type: 'text', value: d?.alias ? source.slice(d.alias.from, d.alias.to) : '', placeholder: ref.id },
+        { id: 'type', label: t('seq.field.type'), type: 'select', value: d?.type ?? 'participant', options: PARTICIPANT_TYPES },
       ];
     }
     if (ref.kind === 'message') {
       const m = seq.messages[Number(ref.id)];
       if (!m) return [];
       return [
-        { id: 'from', label: '送り手', type: 'select', value: m.from, options: ids },
-        { id: 'to', label: '受け手', type: 'select', value: m.to, options: ids },
-        { id: 'text', label: '本文', type: 'text', value: source.slice(m.text.from, m.text.to) },
-        { id: 'arrow', label: '矢印', type: 'select', value: m.arrow.value, options: withValue(MESSAGE_ARROWS, m.arrow.value) },
-        { id: 'act', label: '活性化', type: 'select', value: m.act.value, options: ACTIVATIONS },
+        { id: 'from', label: t('seq.field.from'), type: 'select', value: m.from, options: ids },
+        { id: 'to', label: t('seq.field.to'), type: 'select', value: m.to, options: ids },
+        { id: 'text', label: t('seq.field.text'), type: 'text', value: source.slice(m.text.from, m.text.to) },
+        { id: 'arrow', label: t('seq.field.arrow'), type: 'select', value: m.arrow.value, options: withValue(MESSAGE_ARROWS, m.arrow.value) },
+        { id: 'act', label: t('seq.field.act'), type: 'select', value: m.act.value, options: ACTIVATIONS },
       ];
     }
     if (ref.kind === 'note') {
       const n = seq.notes[Number(ref.id)];
       if (!n) return [];
       return [
-        { id: 'text', label: '本文', type: 'text', value: source.slice(n.text.from, n.text.to) },
-        { id: 'pos', label: '位置', type: 'select', value: n.pos.value, options: NOTE_POSITIONS },
-        { id: 'parts', label: '参加者（カンマ区切り）', type: 'text', value: n.parts.value, commitOnBlur: true },
+        { id: 'text', label: t('seq.field.text'), type: 'text', value: source.slice(n.text.from, n.text.to) },
+        { id: 'pos', label: t('seq.field.pos'), type: 'select', value: n.pos.value, options: NOTE_POSITIONS },
+        { id: 'parts', label: t('seq.field.parts'), type: 'text', value: n.parts.value, commitOnBlur: true },
       ];
     }
     if (ref.kind === 'block') {
       const b = findBlock(seq, ref.id);
       if (!b) return [];
       return [
-        { id: 'kind', label: '種類', type: 'select', value: b.keyword.value, options: withValue(BLOCK_KINDS, b.keyword.value) },
-        { id: 'cond', label: '条件', type: 'text', value: source.slice(b.cond.from, b.cond.to) },
+        { id: 'kind', label: t('seq.field.type'), type: 'select', value: b.keyword.value, options: withValue(BLOCK_KINDS, b.keyword.value) },
+        { id: 'cond', label: t('seq.field.cond'), type: 'text', value: source.slice(b.cond.from, b.cond.to) },
       ];
     }
     if (ref.kind === 'section') {
       const s = findSection(seq, ref.id);
       if (!s) return [];
-      return [{ id: 'cond', label: `条件（${s.keyword}）`, type: 'text', value: source.slice(s.cond.from, s.cond.to) }];
+      return [{ id: 'cond', label: t('seq.field.sectionCond', { keyword: s.keyword }), type: 'text', value: source.slice(s.cond.from, s.cond.to) }];
     }
     return [];
   },
@@ -702,14 +703,14 @@ export const sequencePlugin: DiagramPlugin = {
   actions: [
     {
       id: 'add-participant',
-      title: '＋ 参加者',
+      title: t('seq.action.addParticipant'),
       arity: 0,
       run(source) {
         const id = uniqueId(source, 'P');
         const change = newDeclaration(parseSequence(source), source, `participant ${id} as ${NEW_PARTICIPANT}`);
         return {
           change,
-          label: `参加者 ${id} を追加`,
+          label: t('seq.history.addParticipant', { id }),
           selAfter: rangeInInserted(change, NEW_PARTICIPANT),
           focus: { kind: 'participant', id },
         };
@@ -717,19 +718,19 @@ export const sequencePlugin: DiagramPlugin = {
     },
     {
       id: 'add-message',
-      title: '→ メッセージ',
+      title: t('seq.action.addMessage'),
       arity: 2,
       appliesTo: ['participant'],
-      prompt: '送り先の参加者をクリックしてください（Esc で取り消し）',
+      prompt: t('seq.action.addMessagePrompt'),
       run(source, [from, to]) {
         const change = appendTopLevel(source, `${from.id}->>${to.id}: ${NEW_MESSAGE}`);
         const selAfter = rangeInInserted(change, NEW_MESSAGE);
-        return { change, label: `メッセージ ${from.id} → ${to.id} を追加`, selAfter, focusAt: selAfter.anchor };
+        return { change, label: t('seq.history.addMessage', { from: from.id, to: to.id }), selAfter, focusAt: selAfter.anchor };
       },
     },
     {
       id: 'add-next-message',
-      title: '＋ 次のメッセージ',
+      title: t('seq.action.addNextMessage'),
       arity: 1,
       appliesTo: ['message'],
       key: 'Tab',
@@ -739,12 +740,12 @@ export const sequencePlugin: DiagramPlugin = {
         // 返事として、受け手から送り手へのメッセージを後ろに足す
         const change = insertAfterLine(m.line, source, `${m.to}-->>${m.from}: ${NEW_MESSAGE}`);
         const selAfter = rangeInInserted(change, NEW_MESSAGE);
-        return { change, label: `メッセージ ${m.to} → ${m.from} を追加`, selAfter, focusAt: selAfter.anchor };
+        return { change, label: t('seq.history.addMessage', { from: m.to, to: m.from }), selAfter, focusAt: selAfter.anchor };
       },
     },
     {
       id: 'add-note',
-      title: '注釈',
+      title: t('seq.action.addNote'),
       arity: 1,
       appliesTo: ['participant', 'message'],
       run(source, [ref]) {
@@ -759,12 +760,12 @@ export const sequencePlugin: DiagramPlugin = {
           change = insertAfterLine(m.line, source, `Note over ${over}: ${NEW_NOTE}`);
         }
         const selAfter = rangeInInserted(change, NEW_NOTE);
-        return { change, label: '注釈を追加', selAfter, focusAt: selAfter.anchor };
+        return { change, label: t('seq.history.addNote'), selAfter, focusAt: selAfter.anchor };
       },
     },
     {
       id: 'wrap',
-      title: '枠で囲む',
+      title: t('seq.action.wrap'),
       arity: 1,
       appliesTo: ['message', 'note'],
       run(source, [ref]) {
@@ -774,7 +775,7 @@ export const sequencePlugin: DiagramPlugin = {
         const { change, condAt } = wrapInBlock(seq, line);
         return {
           change,
-          label: '枠（loop）で囲む',
+          label: t('seq.history.wrap'),
           selAfter: { anchor: condAt, head: condAt + NEW_CONDITION.length },
           focusAt: condAt,
         };
@@ -782,7 +783,7 @@ export const sequencePlugin: DiagramPlugin = {
     },
     {
       id: 'add-section',
-      title: '＋ 区切り',
+      title: t('seq.action.addSection'),
       arity: 1,
       appliesTo: ['block', 'section'],
       run(source, [ref]) {
@@ -794,26 +795,26 @@ export const sequencePlugin: DiagramPlugin = {
         const text = `${indentOf(b.line.text)}${kw} ${NEW_CONDITION}\n`;
         const change = { from: b.end.from, insert: text };
         const at = b.end.from + text.indexOf(NEW_CONDITION);
-        return { change, label: `区切り（${kw}）を追加`, selAfter: { anchor: at, head: at + NEW_CONDITION.length }, focusAt: at };
+        return { change, label: t('seq.history.addSection', { keyword: kw }), selAfter: { anchor: at, head: at + NEW_CONDITION.length }, focusAt: at };
       },
     },
     {
       id: 'move-left',
-      title: '← 左へ',
+      title: t('seq.action.moveLeft'),
       arity: 1,
       appliesTo: ['participant'],
       run: (source, [ref]) => moveParticipantBy(source, ref.id, -1),
     },
     {
       id: 'move-right',
-      title: '右へ →',
+      title: t('seq.action.moveRight'),
       arity: 1,
       appliesTo: ['participant'],
       run: (source, [ref]) => moveParticipantBy(source, ref.id, 1),
     },
     {
       id: 'move-up',
-      title: '↑ 上へ',
+      title: t('seq.action.moveUp'),
       arity: 1,
       appliesTo: ['message', 'note', 'block'],
       key: 'ArrowUp',
@@ -822,7 +823,7 @@ export const sequencePlugin: DiagramPlugin = {
     },
     {
       id: 'move-down',
-      title: '↓ 下へ',
+      title: t('seq.action.moveDown'),
       arity: 1,
       appliesTo: ['message', 'note', 'block'],
       key: 'ArrowDown',
@@ -831,7 +832,7 @@ export const sequencePlugin: DiagramPlugin = {
     },
     {
       id: 'delete',
-      title: '削除',
+      title: t('seq.action.delete'),
       arity: 1,
       appliesTo: ['participant', 'message', 'note', 'section'],
       key: 'Delete',
@@ -839,19 +840,19 @@ export const sequencePlugin: DiagramPlugin = {
       run(source, [ref]) {
         const seq = parseSequence(source);
         if (ref.kind === 'participant') {
-          return { change: deleteParticipant(source, ref.id), label: `参加者 ${ref.id} を削除` };
+          return { change: deleteParticipant(source, ref.id), label: t('seq.history.deleteParticipant', { id: ref.id }) };
         }
         if (ref.kind === 'section') {
           const s = findSection(seq, ref.id);
-          return s && { change: removeLine(source, s.line), label: `区切り（${s.keyword}）を削除` };
+          return s && { change: removeLine(source, s.line), label: t('seq.history.deleteSection', { keyword: s.keyword }) };
         }
         const line = statementLine(seq, ref);
-        return line && { change: removeLine(source, line), label: `${KIND_NAME[ref.kind]}を削除` };
+        return line && { change: removeLine(source, line), label: t('seq.history.delete', { kind: KIND_NAME[ref.kind] }) };
       },
     },
     {
       id: 'unwrap',
-      title: '枠を外す',
+      title: t('seq.action.unwrap'),
       arity: 1,
       appliesTo: ['block'],
       key: 'Delete',
@@ -861,12 +862,12 @@ export const sequencePlugin: DiagramPlugin = {
         if (!b?.end) return null;
         // 枠の行（開始・区切り・end）だけを消し、中のメッセージは残す
         const change = [b.line, ...b.sections.map((s) => s.line), b.end].map((l) => removeLine(source, l));
-        return { change, label: `枠（${b.keyword.value}）を外す` };
+        return { change, label: t('seq.history.unwrap', { keyword: b.keyword.value }) };
       },
     },
     {
       id: 'delete-block',
-      title: '中身ごと削除',
+      title: t('seq.action.deleteBlock'),
       arity: 1,
       appliesTo: ['block'],
       danger: true,
@@ -874,7 +875,7 @@ export const sequencePlugin: DiagramPlugin = {
       run(source, [ref]) {
         const b = findBlock(parseSequence(source), ref.id);
         if (!b?.end) return null;
-        return { change: removeLines(source, b.line, b.end), label: `枠（${b.keyword.value}）を中身ごと削除` };
+        return { change: removeLines(source, b.line, b.end), label: t('seq.history.deleteBlock', { keyword: b.keyword.value }) };
       },
     },
   ],
@@ -894,11 +895,11 @@ export const sequencePlugin: DiagramPlugin = {
       const seq = parseSequence(source);
       if (ref.kind === 'participant') {
         const change = moveParticipantTo(seq, source, ref.id, target.id, before);
-        return change && { change, label: `参加者 ${ref.id} を移動`, select: ref };
+        return change && { change, label: t('seq.history.moveParticipant', { id: ref.id }), select: ref };
       }
       const me = unitOf(seq, ref);
       const to = unitOf(seq, target);
-      return me && to ? moveUnit(source, ref, me, to, before, `${KIND_NAME[ref.kind]}を移動`) : null;
+      return me && to ? moveUnit(source, ref, me, to, before, t('seq.history.move', { kind: KIND_NAME[ref.kind] })) : null;
     },
   },
 };
@@ -991,7 +992,7 @@ function moveParticipantTo(seq: Seq, source: string, id: string, targetId: strin
   return changes;
 }
 
-const KIND_NAME: Record<string, string> = { message: 'メッセージ', note: '注釈', block: '枠' };
+const KIND_NAME: Record<string, string> = { message: t('seq.kind.message'), note: t('seq.kind.note'), block: t('seq.kind.block') };
 
 /** 要素の種類ごとの並び（参照の番号はこの並びの位置） */
 function itemsOf(seq: Seq, kind: string): readonly { line: SourceLine }[] {

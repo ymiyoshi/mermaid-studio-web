@@ -21,25 +21,25 @@ interface Props {
 }
 
 const KIND_LABEL: Record<string, string> = {
-  node: 'ノード',
-  edge: 'エッジ',
-  participant: '参加者',
-  message: 'メッセージ',
-  class: 'クラス',
-  relation: '関係',
-  state: '状態',
-  transition: '遷移',
-  entity: 'エンティティ',
-  relationship: 'リレーション',
-  topic: 'トピック',
-  column: '列',
-  card: 'カード',
-  item: '項目',
-  note: '注釈',
-  block: '枠',
-  'block-item': 'ブロック',
-  section: '区切り',
-  subgraph: 'サブグラフ',
+  node: t('misc.kind.node'),
+  edge: t('misc.kind.edge'),
+  participant: t('misc.kind.participant'),
+  message: t('misc.kind.message'),
+  class: t('misc.kind.class'),
+  relation: t('misc.kind.relation'),
+  state: t('misc.kind.state'),
+  transition: t('misc.kind.transition'),
+  entity: t('misc.kind.entity'),
+  relationship: t('misc.kind.relationship'),
+  topic: t('misc.kind.topic'),
+  column: t('misc.kind.column'),
+  card: t('misc.kind.card'),
+  item: t('misc.kind.item'),
+  note: t('misc.kind.note'),
+  block: t('misc.kind.block'),
+  'block-item': t('misc.kind.blockItem'),
+  section: t('misc.kind.section'),
+  subgraph: t('misc.kind.subgraph'),
 };
 
 // 図ビューはパンやドラッグのたびに描き直されるので、props が変わらないときは描き直さない
@@ -254,7 +254,7 @@ function TableEditor({ table, source, editable, selectedFrom }: { table: TableDe
               {row.schema.fields.map((f) => (
                 <span key={f.name} className="row-cell" style={{ flex: f.width ?? 1 }}>
                   <FieldInput
-                    field={{ ...f, value: row.values[f.name] ?? '', placeholder: f.optional ? `${f.label}（省略可）` : f.label }}
+                    field={{ ...f, value: row.values[f.name] ?? '', placeholder: f.optional ? t('misc.table.optional', { label: f.label }) : f.label }}
                     disabled={!editable}
                     historyLabel={t('table.setCell', { kind: row.schema.title, name: f.label })}
                     build={(src, v) => {

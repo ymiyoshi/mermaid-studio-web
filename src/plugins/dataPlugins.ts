@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import type { DiagramPlugin } from './types';
 import { genericTargets } from './generic';
 import { keywordFields, setKeyword, type KeywordSpec } from './keywordLine';
@@ -13,7 +14,7 @@ const select = (name: string, label: string, values: string[], extra: Partial<Ta
   name,
   label,
   type: 'select',
-  options: values.map((v) => ({ value: v, label: v || '（なし）' })),
+  options: values.map((v) => ({ value: v, label: v || t('data.none') })),
   ...extra,
 });
 
@@ -45,9 +46,9 @@ function dataPlugin(type: string, keywords: KeywordSpec[], tables: TableDef[]): 
   };
 }
 
-const TITLE: KeywordSpec = { id: 'title', label: 'タイトル', keyword: 'title' };
-const SECTION = rx('section', 'セクション', /^section\s+(?<name>.+?)\s*$/d, [text('name', '名前')], (v) => `section ${v.name}`, {
-  name: '新しいセクション',
+const TITLE: KeywordSpec = { id: 'title', label: t('data.title'), keyword: 'title' };
+const SECTION = rx('section', t('data.section'), /^section\s+(?<name>.+?)\s*$/d, [text('name', t('data.name'))], (v) => `section ${v.name}`, {
+  name: t('data.section.new'),
 });
 
 // ---- pie ----------------------------------------------------------------
@@ -58,15 +59,15 @@ export const piePlugin = dataPlugin(
   [
     {
       id: 'slices',
-      title: 'スライス',
+      title: t('data.pie.slice'),
       schemas: [
         rx(
           'slice',
-          'スライス',
+          t('data.pie.slice'),
           /^"(?<label>[^"]*)"\s*:\s*(?<value>[-\d.]+)\s*$/d,
-          [text('label', 'ラベル'), num('value', '値')],
+          [text('label', t('data.label')), num('value', t('data.value'))],
           (v) => `"${quoteSafe(v.label)}" : ${v.value}`,
-          { label: '新しい項目', value: '10' },
+          { label: t('data.item.new'), value: '10' },
           (f, v) => (f === 'label' ? quoteSafe(v) : v),
         ),
       ],
@@ -113,28 +114,28 @@ export function parseGanttTask(line: string): ParsedRow | null {
 
 const ganttTask: RowSchema = {
   kind: 'task',
-  title: 'タスク',
+  title: t('data.task'),
   fields: [
-    text('name', '名前', { width: 1.6 }),
-    text('status', '状態', { optional: true, width: 0.9 }),
+    text('name', t('data.name'), { width: 1.6 }),
+    text('status', t('data.gantt.status'), { optional: true, width: 0.9 }),
     text('id', 'ID', { optional: true, width: 0.6 }),
-    text('start', '開始', { optional: true }),
-    text('end', '期間・終了', { width: 0.8 }),
+    text('start', t('data.gantt.start'), { optional: true }),
+    text('end', t('data.gantt.end'), { width: 0.8 }),
   ],
   parse: parseGanttTask,
   format: (v) => `${v.name} :${[v.status, v.id, v.start, v.end].filter((x) => x && x.trim()).join(', ')}`,
-  defaults: { name: '新しいタスク', status: '', id: '', start: '', end: '3d' },
+  defaults: { name: t('data.task.new'), status: '', id: '', start: '', end: '3d' },
 };
 
 export const ganttPlugin = dataPlugin(
   'gantt',
   [
     TITLE,
-    { id: 'dateFormat', label: '日付の書式', keyword: 'dateFormat', placeholder: 'YYYY-MM-DD' },
-    { id: 'axisFormat', label: '軸の書式', keyword: 'axisFormat', placeholder: '%m/%d' },
-    { id: 'excludes', label: '除外する日', keyword: 'excludes', placeholder: 'weekends' },
+    { id: 'dateFormat', label: t('data.gantt.dateFormat'), keyword: 'dateFormat', placeholder: 'YYYY-MM-DD' },
+    { id: 'axisFormat', label: t('data.gantt.axisFormat'), keyword: 'axisFormat', placeholder: '%m/%d' },
+    { id: 'excludes', label: t('data.gantt.excludes'), keyword: 'excludes', placeholder: 'weekends' },
   ],
-  [{ id: 'tasks', title: 'タスク', schemas: [SECTION, ganttTask] }],
+  [{ id: 'tasks', title: t('data.task'), schemas: [SECTION, ganttTask] }],
 );
 
 // ---- timeline / journey -------------------------------------------------
@@ -145,18 +146,20 @@ export const timelinePlugin = dataPlugin(
   [
     {
       id: 'events',
-      title: '出来事',
+      title: t('data.timeline.events'),
       schemas: [
         SECTION,
         rx(
           'period',
-          '時期',
+          t('data.timeline.period'),
           /^(?<period>[^:]+?)\s*:\s*(?<events>.+?)\s*$/d,
-          [text('period', '時期', { width: 0.7 }), text('events', '出来事（: で区切る）', { width: 2 })],
+          [text('period', t('data.timeline.period'), { width: 0.7 }), text('events', t('data.timeline.eventsField'), { width: 2 })],
           (v) => `${v.period} : ${v.events}`,
-          { period: '新しい時期', events: '出来事' },
+          { period: t('data.timeline.period.new'), events: t('data.timeline.event') },
         ),
-        rx('event', '続きの出来事', /^:\s*(?<event>.+?)\s*$/d, [text('event', '出来事')], (v) => `: ${v.event}`, { event: '出来事' }),
+        rx('event', t('data.timeline.continued'), /^:\s*(?<event>.+?)\s*$/d, [text('event', t('data.timeline.event'))], (v) => `: ${v.event}`, {
+          event: t('data.timeline.event'),
+        }),
       ],
     },
   ],
@@ -168,16 +171,16 @@ export const journeyPlugin = dataPlugin(
   [
     {
       id: 'tasks',
-      title: 'タスク',
+      title: t('data.task'),
       schemas: [
         SECTION,
         rx(
           'task',
-          'タスク',
+          t('data.task'),
           /^(?<name>[^:]+?)\s*:\s*(?<score>\d+)\s*:\s*(?<actors>.*?)\s*$/d,
-          [text('name', '名前', { width: 1.5 }), select('score', '満足度', ['1', '2', '3', '4', '5'], { width: 0.6 }), text('actors', '人（, で区切る）')],
+          [text('name', t('data.name'), { width: 1.5 }), select('score', t('data.journey.score'), ['1', '2', '3', '4', '5'], { width: 0.6 }), text('actors', t('data.journey.actors'))],
           (v) => `${v.name}: ${v.score}: ${v.actors}`,
-          { name: '新しいタスク', score: '3', actors: 'ユーザー' },
+          { name: t('data.task.new'), score: '3', actors: t('data.journey.actor.default') },
         ),
       ],
     },
@@ -223,12 +226,12 @@ export const gitGraphPlugin = dataPlugin(
   [
     {
       id: 'commands',
-      title: 'コマンド',
+      title: t('data.git.commands'),
       schemas: [
         {
           kind: 'commit',
           title: 'commit',
-          fields: [text('id', 'ID', { optional: true }), text('tag', 'タグ', { optional: true }), select('type', '種類', ['NORMAL', 'REVERSE', 'HIGHLIGHT'])],
+          fields: [text('id', 'ID', { optional: true }), text('tag', t('data.tag'), { optional: true }), select('type', t('data.kind'), ['NORMAL', 'REVERSE', 'HIGHLIGHT'])],
           parse: gitParser(/^commit\b/d, [
             { name: 'id', quoted: true },
             { name: 'tag', quoted: true },
@@ -240,7 +243,7 @@ export const gitGraphPlugin = dataPlugin(
         {
           kind: 'branch',
           title: 'branch',
-          fields: [text('name', 'ブランチ名')],
+          fields: [text('name', t('data.git.branch'))],
           parse: gitParser(/^branch\s+([^\s]+)/d, [], true),
           format: (v) => `branch ${v.name}`,
           defaults: { name: 'feature' },
@@ -248,7 +251,7 @@ export const gitGraphPlugin = dataPlugin(
         {
           kind: 'checkout',
           title: 'checkout',
-          fields: [text('name', 'ブランチ名')],
+          fields: [text('name', t('data.git.branch'))],
           parse: gitParser(/^(?:checkout|switch)\s+([^\s]+)/d, [], true),
           format: (v) => `checkout ${v.name}`,
           defaults: { name: 'main' },
@@ -256,7 +259,7 @@ export const gitGraphPlugin = dataPlugin(
         {
           kind: 'merge',
           title: 'merge',
-          fields: [text('name', 'ブランチ名'), text('tag', 'タグ', { optional: true })],
+          fields: [text('name', t('data.git.branch')), text('tag', t('data.tag'), { optional: true })],
           parse: gitParser(/^merge\s+([^\s]+)/d, [{ name: 'tag', quoted: true }], true),
           format: (v) => `merge ${v.name}${v.tag ? ` tag: "${v.tag}"` : ''}`,
           defaults: { name: 'feature', tag: '' },
@@ -272,25 +275,25 @@ export const quadrantPlugin = dataPlugin(
   'quadrantChart',
   [
     TITLE,
-    { id: 'x', label: 'x 軸（左 --> 右）', keyword: 'x-axis' },
-    { id: 'y', label: 'y 軸（下 --> 上）', keyword: 'y-axis' },
-    { id: 'q1', label: '第 1 象限（右上）', keyword: 'quadrant-1' },
-    { id: 'q2', label: '第 2 象限（左上）', keyword: 'quadrant-2' },
-    { id: 'q3', label: '第 3 象限（左下）', keyword: 'quadrant-3' },
-    { id: 'q4', label: '第 4 象限（右下）', keyword: 'quadrant-4' },
+    { id: 'x', label: t('data.quadrant.x'), keyword: 'x-axis' },
+    { id: 'y', label: t('data.quadrant.y'), keyword: 'y-axis' },
+    { id: 'q1', label: t('data.quadrant.q1'), keyword: 'quadrant-1' },
+    { id: 'q2', label: t('data.quadrant.q2'), keyword: 'quadrant-2' },
+    { id: 'q3', label: t('data.quadrant.q3'), keyword: 'quadrant-3' },
+    { id: 'q4', label: t('data.quadrant.q4'), keyword: 'quadrant-4' },
   ],
   [
     {
       id: 'points',
-      title: '点',
+      title: t('data.quadrant.point'),
       schemas: [
         rx(
           'point',
-          '点',
+          t('data.quadrant.point'),
           /^(?<name>[^:]+?)\s*:\s*\[\s*(?<x>[\d.]+)\s*,\s*(?<y>[\d.]+)\s*\](?<style>.*?)\s*$/d,
-          [text('name', '名前', { width: 1.5 }), num('x', 'x（0〜1）'), num('y', 'y（0〜1）')],
+          [text('name', t('data.name'), { width: 1.5 }), num('x', t('data.quadrant.x01')), num('y', t('data.quadrant.y01'))],
           (v) => `${v.name}: [${v.x}, ${v.y}]${v.style ?? ''}`,
-          { name: '新しい点', x: '0.5', y: '0.5', style: '' },
+          { name: t('data.quadrant.point.new'), x: '0.5', y: '0.5', style: '' },
         ),
       ],
     },
@@ -301,19 +304,19 @@ export const xyPlugin = dataPlugin(
   'xychart',
   [
     { ...TITLE, quoted: true },
-    { id: 'x', label: 'x 軸', keyword: 'x-axis' },
-    { id: 'y', label: 'y 軸', keyword: 'y-axis' },
+    { id: 'x', label: t('data.xy.x'), keyword: 'x-axis' },
+    { id: 'y', label: t('data.xy.y'), keyword: 'y-axis' },
   ],
   [
     {
       id: 'series',
-      title: '系列',
+      title: t('data.xy.series'),
       schemas: [
         rx(
           'series',
-          '系列',
+          t('data.xy.series'),
           /^(?<kind>bar|line)\s+(?:"(?<name>[^"]*)"\s+)?\[(?<values>[^\]]*)\]\s*$/d,
-          [select('kind', '種類', ['bar', 'line'], { width: 0.6 }), text('name', '名前', { optional: true }), text('values', '値（, で区切る）', { width: 2 })],
+          [select('kind', t('data.kind'), ['bar', 'line'], { width: 0.6 }), text('name', t('data.name'), { optional: true }), text('values', t('data.values'), { width: 2 })],
           (v) => `${v.kind} ${v.name ? `"${quoteSafe(v.name)}" ` : ''}[${v.values}]`,
           { kind: 'bar', name: '', values: '1, 2, 3' },
           quoted,
@@ -331,13 +334,13 @@ export const sankeyPlugin = dataPlugin(
   [
     {
       id: 'flows',
-      title: '流れ',
+      title: t('data.sankey.flow'),
       schemas: [
         rx(
           'flow',
-          '流れ',
+          t('data.sankey.flow'),
           /^(?<source>[^,"]+),(?<target>[^,"]+),(?<value>[\d.]+)\s*$/d,
-          [text('source', '流れ元'), text('target', '流れ先'), num('value', '量')],
+          [text('source', t('data.sankey.source')), text('target', t('data.sankey.target')), num('value', t('data.sankey.value'))],
           (v) => `${v.source},${v.target},${v.value}`,
           { source: 'A', target: 'B', value: '10' },
           (_f, v) => v.replace(/,/g, ''),
@@ -353,24 +356,24 @@ export const packetPlugin = dataPlugin(
   [
     {
       id: 'fields',
-      title: 'フィールド',
+      title: t('data.packet.fields'),
       schemas: [
         rx(
           'range',
-          'ビット範囲',
+          t('data.packet.range'),
           /^(?<start>\d+)(?:-(?<end>\d+))?\s*:\s*"(?<label>[^"]*)"\s*$/d,
-          [num('start', '開始'), num('end', '終了', { optional: true }), text('label', '名前', { width: 2 })],
+          [num('start', t('data.packet.start')), num('end', t('data.packet.end'), { optional: true }), text('label', t('data.name'), { width: 2 })],
           (v) => `${v.start}${v.end ? `-${v.end}` : ''}: "${quoteSafe(v.label)}"`,
-          { start: '0', end: '7', label: '新しいフィールド' },
+          { start: '0', end: '7', label: t('data.packet.field.new') },
           quoted,
         ),
         rx(
           'bits',
-          'ビット数',
+          t('data.packet.bits'),
           /^\+(?<bits>\d+)\s*:\s*"(?<label>[^"]*)"\s*$/d,
-          [num('bits', 'ビット数'), text('label', '名前', { width: 2 })],
+          [num('bits', t('data.packet.bits')), text('label', t('data.name'), { width: 2 })],
           (v) => `+${v.bits}: "${quoteSafe(v.label)}"`,
-          { bits: '8', label: '新しいフィールド' },
+          { bits: '8', label: t('data.packet.field.new') },
           quoted,
         ),
       ],
@@ -380,19 +383,19 @@ export const packetPlugin = dataPlugin(
 
 export const radarPlugin = dataPlugin(
   'radar',
-  [TITLE, { id: 'axis', label: '軸（axis）', keyword: 'axis', placeholder: 'a["A"], b["B"], c["C"]' }],
+  [TITLE, { id: 'axis', label: t('data.radar.axis'), keyword: 'axis', placeholder: 'a["A"], b["B"], c["C"]' }],
   [
     {
       id: 'curves',
-      title: '曲線',
+      title: t('data.radar.curve'),
       schemas: [
         rx(
           'curve',
-          '曲線',
+          t('data.radar.curve'),
           /^curve\s+(?<id>[\p{L}\p{N}_]+)(?:\["(?<label>[^"]*)"\])?\s*\{(?<values>[^}]*)\}\s*$/du,
-          [text('id', 'ID', { width: 0.6 }), text('label', '名前', { optional: true }), text('values', '値（, で区切る）', { width: 2 })],
+          [text('id', 'ID', { width: 0.6 }), text('label', t('data.name'), { optional: true }), text('values', t('data.values'), { width: 2 })],
           (v) => `curve ${v.id}${v.label ? `["${quoteSafe(v.label)}"]` : ''}{${v.values}}`,
-          { id: 'c1', label: '新しい曲線', values: '1, 2, 3' },
+          { id: 'c1', label: t('data.radar.curve.new'), values: '1, 2, 3' },
           quoted,
         ),
       ],
@@ -406,15 +409,15 @@ export const treemapPlugin = dataPlugin(
   [
     {
       id: 'items',
-      title: '項目',
+      title: t('data.treemap.item'),
       schemas: [
         rx(
           'item',
-          '項目',
+          t('data.treemap.item'),
           /^"(?<name>[^"]*)"(?:\s*:\s*(?<value>[\d.]+))?\s*$/d,
-          [text('name', '名前', { width: 2 }), num('value', '値（葉のみ）', { optional: true })],
+          [text('name', t('data.name'), { width: 2 }), num('value', t('data.treemap.leafValue'), { optional: true })],
           (v) => `"${quoteSafe(v.name)}"${v.value ? `: ${v.value}` : ''}`,
-          { name: '新しい項目', value: '10' },
+          { name: t('data.item.new'), value: '10' },
           quoted,
         ),
       ],
@@ -447,29 +450,29 @@ export const c4Plugin = dataPlugin(
   [
     {
       id: 'elements',
-      title: '要素と関係',
+      title: t('data.c4.table'),
       schemas: [
         rx(
           'element',
-          '要素',
+          t('data.c4.element'),
           /^(?<fn>[A-Za-z_]+)\(\s*(?<alias>[\p{L}\p{N}_]+)\s*,\s*"(?<label>[^"]*)"(?:\s*,\s*"(?<descr>[^"]*)")?(?<rest>[^)]*)\)\s*$/du,
-          [select('fn', '種類', C4_ELEMENTS, { width: 0.9 }), text('alias', 'ID', { width: 0.6 }), text('label', '名前'), text('descr', '説明', { optional: true, width: 1.5 })],
+          [select('fn', t('data.kind'), C4_ELEMENTS, { width: 0.9 }), text('alias', 'ID', { width: 0.6 }), text('label', t('data.name')), text('descr', t('data.c4.descr'), { optional: true, width: 1.5 })],
           (v) => `${v.fn}(${v.alias}, "${quoteSafe(v.label)}"${v.descr ? `, "${quoteSafe(v.descr)}"` : ''}${v.rest ?? ''})`,
-          { fn: 'System', alias: 'sys1', label: '新しいシステム', descr: '', rest: '' },
+          { fn: 'System', alias: 'sys1', label: t('data.c4.system.new'), descr: '', rest: '' },
           quoted,
         ),
         rx(
           'rel',
-          '関係',
+          t('data.c4.rel'),
           /^(?<fn>Rel|BiRel|Rel_U|Rel_D|Rel_L|Rel_R|Rel_Up|Rel_Down|Rel_Left|Rel_Right|Rel_Back)\(\s*(?<from>[\p{L}\p{N}_]+)\s*,\s*(?<to>[\p{L}\p{N}_]+)\s*,\s*"(?<label>[^"]*)"(?<rest>[^)]*)\)\s*$/du,
           [
-            select('fn', '種類', ['Rel', 'BiRel', 'Rel_U', 'Rel_D', 'Rel_L', 'Rel_R', 'Rel_Back'], { width: 0.9 }),
-            text('from', '元', { width: 0.6 }),
-            text('to', '先', { width: 0.6 }),
-            text('label', 'ラベル', { width: 1.5 }),
+            select('fn', t('data.kind'), ['Rel', 'BiRel', 'Rel_U', 'Rel_D', 'Rel_L', 'Rel_R', 'Rel_Back'], { width: 0.9 }),
+            text('from', t('data.from'), { width: 0.6 }),
+            text('to', t('data.to'), { width: 0.6 }),
+            text('label', t('data.label'), { width: 1.5 }),
           ],
           (v) => `${v.fn}(${v.from}, ${v.to}, "${quoteSafe(v.label)}"${v.rest ?? ''})`,
-          { fn: 'Rel', from: 'a', to: 'b', label: '使う', rest: '' },
+          { fn: 'Rel', from: 'a', to: 'b', label: t('data.c4.rel.default'), rest: '' },
           quoted,
         ),
       ],
@@ -485,29 +488,29 @@ export const requirementPlugin = dataPlugin(
   [
     {
       id: 'blocks',
-      title: '要求と関係',
+      title: t('data.req.table'),
       schemas: [
         {
           kind: 'requirement',
-          title: '要求',
-          fields: [select('type', '種類', REQ_TYPES), text('name', '名前')],
+          title: t('data.req.requirement'),
+          fields: [select('type', t('data.kind'), REQ_TYPES), text('name', t('data.name'))],
           parse: regexParser(/^(?<type>requirement|functionalRequirement|interfaceRequirement|performanceRequirement|physicalRequirement|designConstraint)\s+(?<name>[^\s{]+)\s*\{\s*$/d),
-          format: (v) => `${v.type} ${v.name} {\n    id: ${v.name}\n    text: 説明\n    risk: medium\n    verifymethod: test\n}`,
+          format: (v) => `${v.type} ${v.name} {\n    id: ${v.name}\n    text: ${t('data.req.text.default')}\n    risk: medium\n    verifymethod: test\n}`,
           defaults: { type: 'requirement', name: 'req1' },
         },
         {
           kind: 'element',
-          title: '要素',
-          fields: [text('name', '名前')],
+          title: t('data.req.element'),
+          fields: [text('name', t('data.name'))],
           parse: regexParser(/^element\s+(?<name>[^\s{]+)\s*\{\s*$/d),
           format: (v) => `element ${v.name} {\n    type: simulation\n}`,
           defaults: { name: 'element1' },
         },
         rx(
           'relation',
-          '関係',
+          t('data.req.relation'),
           /^(?<a>[^\s-]+)\s+-\s*(?<rel>contains|copies|derives|satisfies|verifies|refines|traces)\s*->\s*(?<b>\S+)\s*$/d,
-          [text('a', '元'), select('rel', '関係', ['contains', 'copies', 'derives', 'satisfies', 'verifies', 'refines', 'traces']), text('b', '先')],
+          [text('a', t('data.from')), select('rel', t('data.req.relation'), ['contains', 'copies', 'derives', 'satisfies', 'verifies', 'refines', 'traces']), text('b', t('data.to'))],
           (v) => `${v.a} - ${v.rel} -> ${v.b}`,
           { a: 'element1', rel: 'satisfies', b: 'req1' },
         ),
@@ -524,29 +527,29 @@ export const architecturePlugin = dataPlugin(
   [
     {
       id: 'parts',
-      title: '構成要素と接続',
+      title: t('data.arch.table'),
       schemas: [
         rx(
           'group',
-          'グループ',
+          t('data.arch.group'),
           /^group\s+(?<id>[\p{L}\p{N}_]+)\((?<icon>[^)]*)\)\[(?<label>[^\]]*)\](?:\s+in\s+(?<parent>\S+))?\s*$/du,
-          [text('id', 'ID', { width: 0.6 }), select('icon', 'アイコン', ICONS), text('label', '名前'), text('parent', '親グループ', { optional: true })],
+          [text('id', 'ID', { width: 0.6 }), select('icon', t('data.arch.icon'), ICONS), text('label', t('data.name')), text('parent', t('data.arch.parentGroup'), { optional: true })],
           (v) => `group ${v.id}(${v.icon})[${v.label}]${v.parent ? ` in ${v.parent}` : ''}`,
-          { id: 'g1', icon: 'cloud', label: '新しいグループ', parent: '' },
+          { id: 'g1', icon: 'cloud', label: t('data.arch.group.new'), parent: '' },
         ),
         rx(
           'service',
-          'サービス',
+          t('data.arch.service'),
           /^service\s+(?<id>[\p{L}\p{N}_]+)\((?<icon>[^)]*)\)\[(?<label>[^\]]*)\](?:\s+in\s+(?<parent>\S+))?\s*$/du,
-          [text('id', 'ID', { width: 0.6 }), select('icon', 'アイコン', ICONS), text('label', '名前'), text('parent', 'グループ', { optional: true })],
+          [text('id', 'ID', { width: 0.6 }), select('icon', t('data.arch.icon'), ICONS), text('label', t('data.name')), text('parent', t('data.arch.group'), { optional: true })],
           (v) => `service ${v.id}(${v.icon})[${v.label}]${v.parent ? ` in ${v.parent}` : ''}`,
-          { id: 's1', icon: 'server', label: '新しいサービス', parent: '' },
+          { id: 's1', icon: 'server', label: t('data.arch.service.new'), parent: '' },
         ),
         rx(
           'edge',
-          '接続',
+          t('data.arch.edge'),
           /^(?<a>[\p{L}\p{N}_]+):(?<as>[LRTB])\s*(?<arrow><?-->?)\s*(?<bs>[LRTB]):(?<b>[\p{L}\p{N}_]+)\s*$/du,
-          [text('a', '元', { width: 0.6 }), select('as', '元の辺', ['L', 'R', 'T', 'B'], { width: 0.5 }), select('arrow', '線', ['--', '-->', '<--', '<-->'], { width: 0.6 }), select('bs', '先の辺', ['L', 'R', 'T', 'B'], { width: 0.5 }), text('b', '先', { width: 0.6 })],
+          [text('a', t('data.from'), { width: 0.6 }), select('as', t('data.arch.fromSide'), ['L', 'R', 'T', 'B'], { width: 0.5 }), select('arrow', t('data.arch.line'), ['--', '-->', '<--', '<-->'], { width: 0.6 }), select('bs', t('data.arch.toSide'), ['L', 'R', 'T', 'B'], { width: 0.5 }), text('b', t('data.to'), { width: 0.6 })],
           (v) => `${v.a}:${v.as} ${v.arrow} ${v.bs}:${v.b}`,
           { a: 's1', as: 'R', arrow: '--', bs: 'L', b: 's2' },
         ),
@@ -561,16 +564,16 @@ export const usecasePlugin = dataPlugin(
   [
     {
       id: 'usecases',
-      title: 'アクターとユースケース',
+      title: t('data.usecase.table'),
       schemas: [
-        rx('actor', 'アクター', /^actor\s+(?<name>.+?)\s*$/d, [text('name', '名前')], (v) => `actor ${v.name}`, { name: 'User' }),
+        rx('actor', t('data.usecase.actor'), /^actor\s+(?<name>.+?)\s*$/d, [text('name', t('data.name'))], (v) => `actor ${v.name}`, { name: 'User' }),
         rx(
           'link',
-          'つながり',
+          t('data.usecase.link'),
           /^(?<a>[^\s-]+)\s*-->\s*(?<b>.+?)\s*$/d,
-          [text('a', 'アクター'), text('b', 'ユースケース', { width: 2 })],
+          [text('a', t('data.usecase.actor')), text('b', t('data.usecase.usecase'), { width: 2 })],
           (v) => `${v.a} --> ${v.b}`,
-          { a: 'User', b: '"新しいユースケース"' },
+          { a: 'User', b: `"${t('data.usecase.usecase.new')}"` },
         ),
       ],
     },

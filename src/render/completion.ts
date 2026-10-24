@@ -1,6 +1,7 @@
 import { autocompletion, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
 import { bodyLines, isComment } from '../plugins/source';
 import { META_SHAPES } from '../plugins/flowchartSyntax';
+import { t } from '../i18n';
 
 // テキストエディタの入力補完。図種の宣言、図種ごとの書き方、文書の中にすでにある名前（ノードの ID など）、
 // フローチャートの @{ shape: … } の形の名前を候補に出す。候補を選ぶのは入力と同じ扱い（履歴は入力としてまとまる）。
@@ -13,28 +14,28 @@ export interface Candidate {
 }
 
 const DIAGRAM_TYPES: [string, string][] = [
-  ['flowchart TD', 'フローチャート'],
-  ['sequenceDiagram', 'シーケンス図'],
-  ['classDiagram', 'クラス図'],
-  ['stateDiagram-v2', '状態遷移図'],
-  ['erDiagram', 'ER 図'],
-  ['gantt', 'ガントチャート'],
-  ['pie', '円グラフ'],
-  ['mindmap', 'マインドマップ'],
-  ['timeline', 'タイムライン'],
-  ['journey', 'ユーザージャーニー'],
-  ['gitGraph', 'Git グラフ'],
-  ['quadrantChart', '4 象限チャート'],
-  ['xychart-beta', 'XY チャート'],
-  ['sankey-beta', 'サンキー図'],
-  ['packet-beta', 'パケット図'],
-  ['kanban', 'カンバン'],
-  ['block-beta', 'ブロック図'],
-  ['architecture-beta', 'アーキテクチャ図'],
-  ['radar-beta', 'レーダーチャート'],
-  ['treemap-beta', 'ツリーマップ'],
-  ['requirementDiagram', '要求図'],
-  ['C4Context', 'C4 図'],
+  ['flowchart TD', t('misc.diagram.flowchart')],
+  ['sequenceDiagram', t('misc.diagram.sequence')],
+  ['classDiagram', t('misc.diagram.class')],
+  ['stateDiagram-v2', t('misc.diagram.state')],
+  ['erDiagram', t('misc.diagram.er')],
+  ['gantt', t('misc.diagram.gantt')],
+  ['pie', t('misc.diagram.pie')],
+  ['mindmap', t('misc.diagram.mindmap')],
+  ['timeline', t('misc.diagram.timeline')],
+  ['journey', t('misc.diagram.journey')],
+  ['gitGraph', t('misc.diagram.gitgraph')],
+  ['quadrantChart', t('misc.diagram.quadrant')],
+  ['xychart-beta', t('misc.diagram.xychart')],
+  ['sankey-beta', t('misc.diagram.sankey')],
+  ['packet-beta', t('misc.diagram.packet')],
+  ['kanban', t('misc.diagram.kanban')],
+  ['block-beta', t('misc.diagram.block')],
+  ['architecture-beta', t('misc.diagram.architecture')],
+  ['radar-beta', t('misc.diagram.radar')],
+  ['treemap-beta', t('misc.diagram.treemap')],
+  ['requirementDiagram', t('misc.diagram.requirement')],
+  ['C4Context', t('misc.diagram.c4')],
 ];
 
 /** 図種ごとの書き方（宣言行の最初の単語で引く） */
@@ -110,7 +111,7 @@ export function completeAt(source: string, pos: number, explicit = false): { fro
     options: [
       ...keywords.map((label) => ({ label, type: 'keyword' as const })),
       ...COMMON.map((label) => ({ label, type: 'keyword' as const })),
-      ...names.map((label) => ({ label, type: 'variable' as const, detail: '図の中の名前' })),
+      ...names.map((label) => ({ label, type: 'variable' as const, detail: t('misc.completion.name') })),
     ],
   };
 }

@@ -4,6 +4,7 @@ import { labelText, withGeneric } from './generic';
 import { bodyLines, indentOf, insertLineAfter, isComment, uniqueId, type SourceLine } from './source';
 import { removeLine, removeLines } from './lineOps';
 import { addHitArea, matchInOrder } from './svg';
+import { t } from '../i18n';
 
 // block 図のプラグイン。1 行に並べたブロック（a["A"] b:2 など）、入れ子の block:ID … end、
 // 列の数（columns）、矢印（a --> b）を図から編集する。
@@ -11,18 +12,18 @@ import { addHitArea, matchInOrder } from './svg';
 
 /** ブロックの形（括弧の組） */
 export const BLOCK_SHAPES: { name: string; label: string; open: string; close: string }[] = [
-  { name: 'rect', label: '四角', open: '[', close: ']' },
-  { name: 'round', label: '角丸', open: '(', close: ')' },
-  { name: 'stadium', label: 'スタジアム', open: '([', close: '])' },
-  { name: 'subroutine', label: 'サブルーチン', open: '[[', close: ']]' },
-  { name: 'cylinder', label: '円柱', open: '[(', close: ')]' },
-  { name: 'circle', label: '円', open: '((', close: '))' },
-  { name: 'double-circle', label: '二重丸', open: '(((', close: ')))' },
-  { name: 'asymmetric', label: '旗', open: '>', close: ']' },
-  { name: 'rhombus', label: 'ひし形', open: '{', close: '}' },
-  { name: 'hexagon', label: '六角形', open: '{{', close: '}}' },
-  { name: 'parallelogram', label: '平行四辺形', open: '[/', close: '/]' },
-  { name: 'trapezoid', label: '台形', open: '[/', close: '\\]' },
+  { name: 'rect', label: t('blk.shape.rect'), open: '[', close: ']' },
+  { name: 'round', label: t('blk.shape.round'), open: '(', close: ')' },
+  { name: 'stadium', label: t('blk.shape.stadium'), open: '([', close: '])' },
+  { name: 'subroutine', label: t('blk.shape.subroutine'), open: '[[', close: ']]' },
+  { name: 'cylinder', label: t('blk.shape.cylinder'), open: '[(', close: ')]' },
+  { name: 'circle', label: t('blk.shape.circle'), open: '((', close: '))' },
+  { name: 'double-circle', label: t('blk.shape.doubleCircle'), open: '(((', close: ')))' },
+  { name: 'asymmetric', label: t('blk.shape.asymmetric'), open: '>', close: ']' },
+  { name: 'rhombus', label: t('blk.shape.rhombus'), open: '{', close: '}' },
+  { name: 'hexagon', label: t('blk.shape.hexagon'), open: '{{', close: '}}' },
+  { name: 'parallelogram', label: t('blk.shape.parallelogram'), open: '[/', close: '/]' },
+  { name: 'trapezoid', label: t('blk.shape.trapezoid'), open: '[/', close: '\\]' },
 ];
 
 /** 開き括弧の長いものから試す（[( を [ より先に） */
@@ -172,7 +173,7 @@ export function parseBlock(source: string): ParsedBlock {
   return parsed;
 }
 
-const NEW_LABEL = '新しいブロック';
+const NEW_LABEL = t('blk.newBlock');
 
 /** ブロック（または入れ子のブロック）を消す変更。矢印の行も消す */
 function deleteBlock(source: string, id: string): ChangeSpec[] | null {
@@ -261,19 +262,19 @@ export const blockPlugin: DiagramPlugin = {
     const p = parseBlock(source);
     if (!ref) {
       const cols = p.columns.find((c) => c.parent === null);
-      return [{ id: 'columns', label: '列の数', type: 'text', value: cols?.value ?? '', placeholder: '自動' }];
+      return [{ id: 'columns', label: t('blk.field.columns'), type: 'text', value: cols?.value ?? '', placeholder: t('blk.field.auto') }];
     }
     if (ref.kind === 'edge') {
       const e = p.edges[Number(ref.id)];
-      return e ? [{ id: 'from', label: '元', type: 'text', value: e.from, readonly: true }, { id: 'to', label: '先', type: 'text', value: e.to, readonly: true }] : [];
+      return e ? [{ id: 'from', label: t('blk.field.from'), type: 'text', value: e.from, readonly: true }, { id: 'to', label: t('blk.field.to'), type: 'text', value: e.to, readonly: true }] : [];
     }
     const group = p.groups.find((g) => g.id === ref.id);
     if (group) {
       const cols = p.columns.find((c) => c.parent === group.id);
       return [
         { id: 'id', label: 'ID', type: 'text', value: group.id, readonly: true },
-        { id: 'width', label: '幅（列の数）', type: 'number', value: group.width ? String(group.width.value) : '', placeholder: '1' },
-        { id: 'columns', label: '中の列の数', type: 'text', value: cols?.value ?? '', placeholder: '自動' },
+        { id: 'width', label: t('blk.field.width'), type: 'number', value: group.width ? String(group.width.value) : '', placeholder: '1' },
+        { id: 'columns', label: t('blk.field.innerColumns'), type: 'text', value: cols?.value ?? '', placeholder: t('blk.field.auto') },
       ];
     }
     const item = p.items.find((x) => x.id === ref.id);
@@ -281,9 +282,9 @@ export const blockPlugin: DiagramPlugin = {
     const shape = item.shape ? (BLOCK_SHAPES.find((s) => s.open === item.shape!.open && s.close === item.shape!.close)?.name ?? 'rect') : 'rect';
     return [
       { id: 'id', label: 'ID', type: 'text', value: item.id, readonly: true },
-      { id: 'label', label: 'ラベル', type: 'text', value: item.label ? source.slice(item.label.from, item.label.to) : '' },
-      { id: 'shape', label: '形', type: 'select', value: shape, options: BLOCK_SHAPES.map((s) => ({ value: s.name, label: s.label })) },
-      { id: 'width', label: '幅（列の数）', type: 'number', value: item.width ? String(item.width.value) : '', placeholder: '1' },
+      { id: 'label', label: t('plg.label'), type: 'text', value: item.label ? source.slice(item.label.from, item.label.to) : '' },
+      { id: 'shape', label: t('blk.field.shape'), type: 'select', value: shape, options: BLOCK_SHAPES.map((s) => ({ value: s.name, label: s.label })) },
+      { id: 'width', label: t('blk.field.width'), type: 'number', value: item.width ? String(item.width.value) : '', placeholder: '1' },
     ];
   },
 
@@ -344,7 +345,7 @@ export const blockPlugin: DiagramPlugin = {
   actions: [
     {
       id: 'add-block',
-      title: '＋ ブロック',
+      title: t('blk.action.add'),
       arity: 0,
       run(source) {
         const p = parseBlock(source);
@@ -353,12 +354,12 @@ export const blockPlugin: DiagramPlugin = {
         const { header, body } = bodyLines(source);
         const indent = last ? indentOf(last.text) : body[0] ? indentOf(body[0].text) || '    ' : '    ';
         const change = insertLineAfter(source, last ?? header, `${indent}${id}["${NEW_LABEL}"]`);
-        return { change, label: `ブロック ${id} を追加`, focus: { kind: 'block-item', id } };
+        return { change, label: t('blk.history.add', { id }), focus: { kind: 'block-item', id } };
       },
     },
     {
       id: 'add-next',
-      title: '＋ 次のブロック',
+      title: t('blk.action.addNext'),
       arity: 1,
       appliesTo: ['block-item'],
       key: 'Tab',
@@ -370,12 +371,12 @@ export const blockPlugin: DiagramPlugin = {
         const text = `${id}["${NEW_LABEL}"]`;
         // 同じ行の後ろに並べる（入れ子のブロックなら end の後ろの行に足す）
         const change = item ? { from: item.range.to, insert: ` ${text}` } : group?.close ? insertLineAfter(source, group.close, `${indentOf(group.close.text)}${text}`) : null;
-        return change ? { change, label: `ブロック ${id} を ${ref.id} の次に追加`, focus: { kind: 'block-item', id } } : null;
+        return change ? { change, label: t('blk.history.addNext', { id, ref: ref.id }), focus: { kind: 'block-item', id } } : null;
       },
     },
     {
       id: 'add-inside',
-      title: '＋ 中にブロック',
+      title: t('blk.action.addInside'),
       arity: 1,
       appliesTo: ['block-item'],
       run(source, [ref]) {
@@ -383,25 +384,25 @@ export const blockPlugin: DiagramPlugin = {
         if (!group?.close) return null;
         const id = uniqueId(source, 'b');
         const change = { from: group.close.from, insert: `${indentOf(group.open.text)}    ${id}["${NEW_LABEL}"]\n` };
-        return { change, label: `ブロック ${id} を ${ref.id} の中に追加`, focus: { kind: 'block-item', id } };
+        return { change, label: t('blk.history.addInside', { id, ref: ref.id }), focus: { kind: 'block-item', id } };
       },
     },
     {
       id: 'connect',
-      title: '→ 矢印',
+      title: t('blk.action.connect'),
       arity: 2,
       appliesTo: ['block-item'],
-      prompt: '矢印の先のブロックをクリックしてください（Esc で取り消し）',
+      prompt: t('blk.prompt.connect'),
       run(source, [a, b]) {
         const p = parseBlock(source);
         const last = [...p.edges.map((e) => e.line), lastTopItemLine(p)].filter((l): l is SourceLine => !!l).sort((x, y) => y.index - x.index)[0] ?? null;
         const indent = last ? indentOf(last.text) : '    ';
-        return { change: insertLineAfter(source, last ?? bodyLines(source).header, `${indent}${a.id} --> ${b.id}`), label: `${a.id} → ${b.id} の矢印を追加` };
+        return { change: insertLineAfter(source, last ?? bodyLines(source).header, `${indent}${a.id} --> ${b.id}`), label: t('blk.history.connect', { a: a.id, b: b.id }) };
       },
     },
     {
       id: 'delete',
-      title: '削除',
+      title: t('plg.delete'),
       arity: 1,
       appliesTo: ['block-item', 'edge'],
       key: 'Delete',
@@ -409,10 +410,10 @@ export const blockPlugin: DiagramPlugin = {
       run(source, [ref]) {
         if (ref.kind === 'edge') {
           const e = parseBlock(source).edges[Number(ref.id)];
-          return e ? { change: removeLine(source, e.line), label: `${e.from} → ${e.to} の矢印を削除` } : null;
+          return e ? { change: removeLine(source, e.line), label: t('blk.history.deleteArrow', { a: e.from, b: e.to }) } : null;
         }
         const change = deleteBlock(source, ref.id);
-        return change ? { change, label: `ブロック ${ref.id} を削除` } : null;
+        return change ? { change, label: t('blk.history.delete', { id: ref.id }) } : null;
       },
     },
   ],

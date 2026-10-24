@@ -1,4 +1,5 @@
 import { ChangeSet, Text } from '@codemirror/state';
+import { t } from '../i18n';
 
 // 設計書 §8: ツリー型・無制限の履歴。
 // 各ノードは「親 → 自分」の forward と「自分 → 親」の inverse を CodeMirror の ChangeSet(JSON) で持つ。
@@ -72,7 +73,7 @@ export class HistoryTree {
     this.headId = headId;
   }
 
-  static create(docId: string, text: string, ts: number, label = '作成'): HistoryTree {
+  static create(docId: string, text: string, ts: number, label = t('history.create')): HistoryTree {
     const len = text.length;
     const root: HistoryNode = {
       id: newId(),

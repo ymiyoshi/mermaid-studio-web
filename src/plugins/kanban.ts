@@ -2,12 +2,13 @@ import type { DiagramPlugin, DiagramTarget, PropertyField, SourceRange } from '.
 import { labelText, withGeneric } from './generic';
 import { bodyLines, indentOf, insertLineAfter, uniqueId } from './source';
 import { addChild, deleteSubtree, moveSibling, parseOutline, type OutlineNode } from './outline';
+import { t } from '../i18n';
 
 // kanban のプラグイン（設計書 §7.3 Phase 4）。
 // 1 段目が列、2 段目がカード。SVG の g の id（…-<ID>）でソースに対応付ける。
 
-const NEW_COLUMN = '新しい列';
-const NEW_CARD = '新しいカード';
+const NEW_COLUMN = t('kb.newColumn');
+const NEW_CARD = t('kb.newCard');
 
 const ITEM = /^(?<id>[\p{L}\p{N}_-]+)\[(?<label>[^\]]*)\]/du;
 
@@ -57,7 +58,7 @@ export const kanbanPlugin: DiagramPlugin = {
     if (!item) return [];
     return [
       { id: 'id', label: 'ID', type: 'text', value: item.id, readonly: true },
-      { id: 'label', label: item.kind === 'column' ? '列の名前' : 'カードの内容', type: 'text', value: source.slice(item.label.from, item.label.to) },
+      { id: 'label', label: item.kind === 'column' ? t('kb.field.columnName') : t('kb.field.cardText'), type: 'text', value: source.slice(item.label.from, item.label.to) },
     ];
   },
 
@@ -69,7 +70,7 @@ export const kanbanPlugin: DiagramPlugin = {
   actions: [
     {
       id: 'add-column',
-      title: '＋ 列',
+      title: t('kb.action.addColumn'),
       arity: 0,
       run(source) {
         const id = uniqueId(source, 'col');
@@ -78,12 +79,12 @@ export const kanbanPlugin: DiagramPlugin = {
         const indent = columns[0] ? indentOf(columns[0].node.line.text) : '  ';
         const after = body.at(-1) ?? header;
         const change = insertLineAfter(source, after, `${indent}${id}[${NEW_COLUMN}]`);
-        return { change, label: `列 ${id} を追加`, focus: { kind: 'column', id } };
+        return { change, label: t('kb.history.addColumn', { id }), focus: { kind: 'column', id } };
       },
     },
     {
       id: 'add-card',
-      title: '＋ カード',
+      title: t('kb.action.addCard'),
       arity: 1,
       appliesTo: ['column', 'card'],
       key: 'Tab',
@@ -93,41 +94,41 @@ export const kanbanPlugin: DiagramPlugin = {
         if (!item) return null;
         const column = item.kind === 'column' ? item.node : item.node.parent!;
         const id = uniqueId(source, 'card');
-        return { change: addChild(column, `${id}[${NEW_CARD}]`), label: `カード ${id} を追加`, focus: { kind: 'card', id } };
+        return { change: addChild(column, `${id}[${NEW_CARD}]`), label: t('kb.history.addCard', { id }), focus: { kind: 'card', id } };
       },
     },
     {
       id: 'move-up',
-      title: '↑ 前へ',
+      title: t('kb.action.moveBack'),
       arity: 1,
       appliesTo: ['column', 'card'],
       run(source, [ref]) {
         const item = kanbanItems(source).find((x) => x.id === ref.id);
         const change = item && moveSibling(source, item.node, -1);
-        return change ? { change, label: `${ref.id} を前へ移動` } : null;
+        return change ? { change, label: t('kb.history.moveBack', { id: ref.id }) } : null;
       },
     },
     {
       id: 'move-down',
-      title: '↓ 後ろへ',
+      title: t('kb.action.moveForward'),
       arity: 1,
       appliesTo: ['column', 'card'],
       run(source, [ref]) {
         const item = kanbanItems(source).find((x) => x.id === ref.id);
         const change = item && moveSibling(source, item.node, 1);
-        return change ? { change, label: `${ref.id} を後ろへ移動` } : null;
+        return change ? { change, label: t('kb.history.moveForward', { id: ref.id }) } : null;
       },
     },
     {
       id: 'delete',
-      title: '削除',
+      title: t('plg.delete'),
       arity: 1,
       appliesTo: ['column', 'card'],
       key: 'Delete',
       danger: true,
       run(source, [ref]) {
         const item = kanbanItems(source).find((x) => x.id === ref.id);
-        return item ? { change: deleteSubtree(source, item.node), label: `${ref.id} を削除` } : null;
+        return item ? { change: deleteSubtree(source, item.node), label: t('kb.history.delete', { id: ref.id }) } : null;
       },
     },
   ],

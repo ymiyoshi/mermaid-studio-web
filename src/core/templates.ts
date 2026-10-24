@@ -1,3 +1,5 @@
+import { t } from '../i18n';
+
 // 新規作成用のテンプレート。全図種の表示確認にも使う。
 
 export interface Template {
@@ -7,10 +9,10 @@ export interface Template {
 }
 
 export const TEMPLATES: Template[] = [
-  { id: 'blank', name: '空の図', text: '' },
+  { id: 'blank', name: t('misc.diagram.blank'), text: '' },
   {
     id: 'flowchart',
-    name: 'フローチャート',
+    name: t('misc.diagram.flowchart'),
     text: `flowchart TD
     %% 処理の流れ
     A[開始] --> B{条件を満たす?}
@@ -22,7 +24,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: 'sequence',
-    name: 'シーケンス図',
+    name: t('misc.diagram.sequence'),
     text: `sequenceDiagram
     participant U as ユーザー
     participant S as サーバー
@@ -33,7 +35,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: 'class',
-    name: 'クラス図',
+    name: t('misc.diagram.class'),
     text: `classDiagram
     class Animal {
       +String name
@@ -47,7 +49,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: 'state',
-    name: '状態遷移図',
+    name: t('misc.diagram.state'),
     text: `stateDiagram-v2
     [*] --> 待機
     待機 --> 実行中: 開始
@@ -57,7 +59,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: 'er',
-    name: 'ER 図',
+    name: t('misc.diagram.er'),
     text: `erDiagram
     CUSTOMER ||--o{ ORDER : places
     ORDER ||--|{ LINE_ITEM : contains
@@ -69,7 +71,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: 'gantt',
-    name: 'ガントチャート',
+    name: t('misc.diagram.gantt'),
     text: `gantt
     title 開発計画
     dateFormat YYYY-MM-DD
@@ -82,7 +84,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: 'pie',
-    name: '円グラフ',
+    name: t('misc.diagram.pie'),
     text: `pie title 利用ブラウザ
     "Chrome" : 62
     "Safari" : 20
@@ -92,7 +94,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: 'mindmap',
-    name: 'マインドマップ',
+    name: t('misc.diagram.mindmap'),
     text: `mindmap
   root((Mermaid Studio))
     表示
@@ -107,7 +109,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: 'gitgraph',
-    name: 'Git グラフ',
+    name: t('misc.diagram.gitgraph'),
     text: `gitGraph
     commit
     branch feature
@@ -121,7 +123,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: 'journey',
-    name: 'ユーザージャーニー',
+    name: t('misc.diagram.journey'),
     text: `journey
     title 図を作る
     section 準備
@@ -133,7 +135,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: 'timeline',
-    name: 'タイムライン',
+    name: t('misc.diagram.timeline'),
     text: `timeline
     title リリース
     2026-11 : Phase 0
@@ -143,7 +145,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: 'quadrant',
-    name: '4 象限チャート',
+    name: t('misc.diagram.quadrant'),
     text: `quadrantChart
     title 優先度
     x-axis 低い工数 --> 高い工数
@@ -158,7 +160,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: 'usecase',
-    name: 'ユースケース図',
+    name: t('misc.diagram.usecase'),
     text: `usecase-beta
     actor User
     actor Admin
@@ -168,7 +170,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: 'kanban',
-    name: 'カンバン',
+    name: t('misc.diagram.kanban'),
     text: `kanban
   todo[やること]
     t1[設計書を書く]
@@ -181,7 +183,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: 'architecture',
-    name: 'アーキテクチャ図',
+    name: t('misc.diagram.architecture'),
     text: `architecture-beta
     group api(cloud)[API]
     service db(database)[データベース] in api
@@ -191,7 +193,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: 'c4',
-    name: 'C4 図',
+    name: t('misc.diagram.c4'),
     text: `C4Context
     title システム構成
     Person(user, "利用者")
@@ -201,7 +203,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: 'sankey',
-    name: 'サンキー図',
+    name: t('misc.diagram.sankey'),
     text: `sankey-beta
 Visit,New,40
 Visit,Template,25
@@ -211,7 +213,7 @@ Template,Saved,20
   },
   {
     id: 'requirement',
-    name: '要求図',
+    name: t('misc.diagram.requirement'),
     text: `requirementDiagram
     requirement undo_history {
     id: 1
@@ -227,7 +229,7 @@ Template,Saved,20
   },
   {
     id: 'xychart',
-    name: 'XY チャート',
+    name: t('misc.diagram.xychart'),
     text: `xychart
     title "月別の図の数"
     x-axis ["1月", "2月", "3月", "4月"]
@@ -238,7 +240,7 @@ Template,Saved,20
   },
   {
     id: 'block',
-    name: 'ブロック図',
+    name: t('misc.diagram.block'),
     text: `block-beta
     columns 3
     %% 画面とサーバーの構成

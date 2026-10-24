@@ -4,27 +4,29 @@ import { labelText, withGeneric } from './generic';
 import { bodyLines, insertLineAfter, rangeInInserted, tokenRegex, uniqueId, type SourceLine } from './source';
 import { blockFrom, headOf, insertIntoBlock, maskQuotes, removeLine, removeLines, topLevelEnd, VALID_NAME } from './lineOps';
 import { addHitArea, edgeLabelFor, idFromSvg, matchInOrder } from './svg';
+import { t } from '../i18n';
 
 // erDiagram のプラグイン（設計書 §7.3 Phase 2）。
 // エンティティは SVG の id（…-entity-<名前>-<連番>）で、リレーションは SVG 上の順番で対応付ける。
 
-const NEW_ATTR = 'string 新しい属性';
+const NEW_ATTR_NAME = t('er.newAttr');
+const NEW_ATTR = `string ${NEW_ATTR_NAME}`;
 
 const REL =
   /^(?<indent>\s*)(?<a>[\p{L}\p{N}_-]+|"[^"]+")\s*(?<l>\|o|\|\||\}o|\}\|)(?<mid>--|\.\.)(?<r>o\||\|\||o\{|\|\{)\s*(?<b>[\p{L}\p{N}_-]+|"[^"]+")\s*:\s*(?<label>.*?)\s*$/du;
 const BLOCK = /^\s*(?<name>[\p{L}\p{N}_-]+)\s*(?:\[[^\]]*\])?\s*\{/u;
 
 export const LEFT_CARD = [
-  { value: '||', label: 'ちょうど 1（||）' },
-  { value: '|o', label: '0 か 1（|o）' },
-  { value: '}|', label: '1 以上（}|）' },
-  { value: '}o', label: '0 以上（}o）' },
+  { value: '||', label: t('er.card.one', { sym: '||' }) },
+  { value: '|o', label: t('er.card.zeroOrOne', { sym: '|o' }) },
+  { value: '}|', label: t('er.card.oneOrMore', { sym: '}|' }) },
+  { value: '}o', label: t('er.card.zeroOrMore', { sym: '}o' }) },
 ];
 export const RIGHT_CARD = [
-  { value: '||', label: 'ちょうど 1（||）' },
-  { value: 'o|', label: '0 か 1（o|）' },
-  { value: '|{', label: '1 以上（|{）' },
-  { value: 'o{', label: '0 以上（o{）' },
+  { value: '||', label: t('er.card.one', { sym: '||' }) },
+  { value: 'o|', label: t('er.card.zeroOrOne', { sym: 'o|' }) },
+  { value: '|{', label: t('er.card.oneOrMore', { sym: '|{' }) },
+  { value: 'o{', label: t('er.card.zeroOrMore', { sym: 'o{' }) },
 ];
 
 interface Rel {
@@ -139,26 +141,26 @@ export const erPlugin: DiagramPlugin = {
 
   inspect(source, ref): PropertyField[] {
     if (ref?.kind === 'entity') {
-      return [{ id: 'name', label: 'エンティティ名', type: 'text', value: ref.id, commitOnBlur: true }];
+      return [{ id: 'name', label: t('er.field.name'), type: 'text', value: ref.id, commitOnBlur: true }];
     }
     if (ref?.kind === 'relationship') {
       const r = parseRelationships(source)[Number(ref.id)];
       if (!r) return [];
       return [
-        { id: 'ends', label: 'エンティティ', type: 'text', value: `${r.a} — ${r.b}`, readonly: true },
-        { id: 'l', label: `${r.a} 側`, type: 'select', value: r.v.l!, options: LEFT_CARD },
-        { id: 'r', label: `${r.b} 側`, type: 'select', value: r.v.r!, options: RIGHT_CARD },
+        { id: 'ends', label: t('er.field.ends'), type: 'text', value: `${r.a} — ${r.b}`, readonly: true },
+        { id: 'l', label: t('er.field.side', { name: r.a }), type: 'select', value: r.v.l!, options: LEFT_CARD },
+        { id: 'r', label: t('er.field.side', { name: r.b }), type: 'select', value: r.v.r!, options: RIGHT_CARD },
         {
           id: 'mid',
-          label: '線',
+          label: t('er.field.line'),
           type: 'select',
           value: r.v.mid!,
           options: [
-            { value: '--', label: '実線（識別）' },
-            { value: '..', label: '点線（非識別）' },
+            { value: '--', label: t('er.line.identifying') },
+            { value: '..', label: t('er.line.nonIdentifying') },
           ],
         },
-        { id: 'label', label: 'ラベル', type: 'text', value: r.v.label!.replace(/^"(.*)"$/, '$1') },
+        { id: 'label', label: t('plg.label'), type: 'text', value: r.v.label!.replace(/^"(.*)"$/, '$1') },
       ];
     }
     return [];
@@ -184,18 +186,18 @@ export const erPlugin: DiagramPlugin = {
   actions: [
     {
       id: 'add-entity',
-      title: '＋ エンティティ',
+      title: t('er.action.addEntity'),
       arity: 0,
       run(source) {
         const id = uniqueId(source, 'ENTITY');
         const { after, indent } = topLevelEnd(source);
         const change = insertLineAfter(source, after, `${indent}${id} {\n${indent}    string id\n${indent}}`);
-        return { change, label: `エンティティ ${id} を追加`, selAfter: rangeInInserted(change, id) };
+        return { change, label: t('er.history.addEntity', { id }), selAfter: rangeInInserted(change, id) };
       },
     },
     {
       id: 'add-attribute',
-      title: '＋ 属性',
+      title: t('er.action.addAttr'),
       arity: 1,
       appliesTo: ['entity'],
       key: 'Tab',
@@ -206,32 +208,32 @@ export const erPlugin: DiagramPlugin = {
         const change = block
           ? insertIntoBlock(block, NEW_ATTR)
           : insertLineAfter(source, after, `${indent}${ref.id} {\n${indent}    ${NEW_ATTR}\n${indent}}`);
-        return { change, label: `${ref.id} に属性を追加`, selAfter: rangeInInserted(change as { from: number; insert: string }, '新しい属性') };
+        return { change, label: t('er.history.addAttr', { id: ref.id }), selAfter: rangeInInserted(change as { from: number; insert: string }, NEW_ATTR_NAME) };
       },
     },
     {
       id: 'connect',
-      title: '→ リレーション',
+      title: t('er.action.connect'),
       arity: 2,
       appliesTo: ['entity'],
-      prompt: '相手のエンティティをクリックしてください（Esc で取り消し）',
+      prompt: t('er.prompt.connect'),
       run(source, [a, b]) {
         const { after, indent } = topLevelEnd(source);
         const change = insertLineAfter(source, after, `${indent}${a.id} ||--o{ ${b.id} : has`);
-        return { change, label: `${a.id} — ${b.id} のリレーションを追加`, selAfter: rangeInInserted(change, 'has'), focusAt: rangeInInserted(change, 'has').anchor };
+        return { change, label: t('er.history.connect', { a: a.id, b: b.id }), selAfter: rangeInInserted(change, 'has'), focusAt: rangeInInserted(change, 'has').anchor };
       },
     },
     {
       id: 'delete',
-      title: '削除',
+      title: t('plg.delete'),
       arity: 1,
       appliesTo: ['entity', 'relationship'],
       key: 'Delete',
       danger: true,
       run(source, [ref]) {
-        if (ref.kind === 'entity') return { change: deleteEntity(source, ref.id), label: `エンティティ ${ref.id} を削除` };
+        if (ref.kind === 'entity') return { change: deleteEntity(source, ref.id), label: t('er.history.deleteEntity', { id: ref.id }) };
         const r = parseRelationships(source)[Number(ref.id)];
-        return r && { change: removeLine(source, r.line), label: `${r.a} — ${r.b} のリレーションを削除` };
+        return r && { change: removeLine(source, r.line), label: t('er.history.deleteRel', { a: r.a, b: r.b }) };
       },
     },
   ],

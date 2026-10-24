@@ -1,5 +1,6 @@
 import type { ChangeSpec } from '@codemirror/state';
 import { splitLines, type SourceLine } from './source';
+import { t } from '../i18n';
 
 // 図の先頭の設定（frontmatter）の読み書き。テーマの編集に使う。
 //   ---
@@ -152,13 +153,13 @@ export function setFrontmatterValue(source: string, path: string[], value: strin
 
 /** テーマの編集で出す色（themeVariables の名前と表示名） */
 export const THEME_COLORS: { key: string; label: string }[] = [
-  { key: 'primaryColor', label: '基本の塗り' },
-  { key: 'primaryTextColor', label: '基本の文字' },
-  { key: 'primaryBorderColor', label: '基本の枠線' },
-  { key: 'lineColor', label: '線' },
-  { key: 'secondaryColor', label: '2 番目の塗り' },
-  { key: 'tertiaryColor', label: '3 番目の塗り' },
-  { key: 'background', label: '背景' },
+  { key: 'primaryColor', label: t('misc.themeColor.primaryColor') },
+  { key: 'primaryTextColor', label: t('misc.themeColor.primaryTextColor') },
+  { key: 'primaryBorderColor', label: t('misc.themeColor.primaryBorderColor') },
+  { key: 'lineColor', label: t('misc.themeColor.lineColor') },
+  { key: 'secondaryColor', label: t('misc.themeColor.secondaryColor') },
+  { key: 'tertiaryColor', label: t('misc.themeColor.tertiaryColor') },
+  { key: 'background', label: t('misc.themeColor.background') },
 ];
 
 export const DIAGRAM_THEMES = ['default', 'base', 'neutral', 'forest', 'dark'];
