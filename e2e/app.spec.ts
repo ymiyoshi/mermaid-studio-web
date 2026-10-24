@@ -278,6 +278,30 @@ test('一度開けば、オフラインでも起動して描ける（PWA）', as
   await expect(page.locator('.diagram-canvas g.mindmap-node').first()).toBeVisible();
 });
 
+test('タッチのピンチで図を拡大する', async ({ browser }) => {
+  const context = await browser.newContext({ locale: 'ja-JP', viewport: { width: 1440, height: 900 }, hasTouch: true });
+  const page = await context.newPage();
+  await openApp(page);
+  const label = page.locator('.zoom-label');
+  await expect(page.locator('.diagram-viewport')).toHaveClass(/editable/);
+  const before = parseInt((await label.innerText()).replace('%', ''), 10);
+  // 図ビューの中央で、2 本の指の間を 100px から 300px に開く（Chrome の DevTools Protocol でタッチを送る）
+  const box = (await page.locator('.diagram-viewport').boundingBox())!;
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  const cdp = await context.newCDPSession(page);
+  const touch = (type: string, d: number) =>
+    cdp.send('Input.dispatchTouchEvent', {
+      type,
+      touchPoints: type === 'touchEnd' ? [] : [{ x: cx - d / 2, y: cy, id: 1 }, { x: cx + d / 2, y: cy, id: 2 }],
+    });
+  await touch('touchStart', 100);
+  for (const d of [150, 200, 250, 300]) await touch('touchMove', d);
+  await touch('touchEnd', 0);
+  await expect.poll(async () => parseInt((await label.innerText()).replace('%', ''), 10)).toBeGreaterThan(before * 2.5);
+  await context.close();
+});
+
 test('狭い画面ではタブで切り替える', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openApp(page);

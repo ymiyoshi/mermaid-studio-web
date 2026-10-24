@@ -46,6 +46,27 @@ export function fixSvgSize(svg: SVGSVGElement) {
   svg.style.maxWidth = 'none';
 }
 
+export interface Point {
+  x: number;
+  y: number;
+}
+
+/**
+ * ピンチ（2 本指）の表示。始めたときの表示と指の位置（a0, b0）から、いまの指の位置（a, b）に合わせる。
+ * 指の間の距離の比で拡大縮小し、2 本の指の中点が同じ図の位置に留まるように動かす
+ */
+export function pinchView(start: ViewBox, a0: Point, b0: Point, a: Point, b: Point): ViewBox {
+  const d0 = Math.hypot(b0.x - a0.x, b0.y - a0.y) || 1;
+  const d = Math.hypot(b.x - a.x, b.y - a.y);
+  const scale = clampScale(start.scale * (d / d0));
+  const m0 = { x: (a0.x + b0.x) / 2, y: (a0.y + b0.y) / 2 };
+  const m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  // 始めたときに中点の下にあった図の位置
+  const gx = (m0.x - start.x) / start.scale;
+  const gy = (m0.y - start.y) / start.scale;
+  return { scale, x: m.x - gx * scale, y: m.y - gy * scale };
+}
+
 /** (px, py) を中心に scale を変えた表示 */
 function zoomAround(v: ViewBox, scale: number, px: number, py: number): ViewBox {
   const k = scale / v.scale;
@@ -67,6 +88,57 @@ export function usePanZoom(viewport: RefObject<HTMLDivElement | null>, canvas: R
     };
     vp.addEventListener('wheel', onWheel, { passive: false });
     return () => vp.removeEventListener('wheel', onWheel);
+  }, [viewport]);
+
+  // タッチのピンチで拡大縮小する。2 本目の指が触れたら、選択やドラッグの代わりにピンチとして扱い、
+  // 指が離れるまでのイベントは図ビューの他の処理（React のハンドラ）に渡さない
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  useEffect(() => {
+    const vp = viewport.current;
+    if (!vp) return;
+    const touches = new Map<number, Point>();
+    let pinch: { start: ViewBox; a0: Point; b0: Point; ids: [number, number] } | null = null;
+    const local = (e: PointerEvent): Point => {
+      const r = vp.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    };
+    const down = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') return;
+      touches.set(e.pointerId, local(e));
+      if (touches.size === 2 && !pinch) {
+        const [[ia, a], [ib, b]] = [...touches.entries()];
+        pinch = { start: viewRef.current, a0: a, b0: b, ids: [ia, ib] };
+        drag.current = null;
+        e.stopPropagation();
+      }
+    };
+    const move = (e: PointerEvent) => {
+      if (!touches.has(e.pointerId)) return;
+      touches.set(e.pointerId, local(e));
+      if (!pinch) return;
+      const a = touches.get(pinch.ids[0]);
+      const b = touches.get(pinch.ids[1]);
+      if (a && b) setView(pinchView(pinch.start, pinch.a0, pinch.b0, a, b));
+      e.stopPropagation();
+    };
+    const up = (e: PointerEvent) => {
+      if (!touches.delete(e.pointerId)) return;
+      if (pinch) {
+        e.stopPropagation();
+        if (pinch.ids.includes(e.pointerId)) pinch = null;
+      }
+    };
+    vp.addEventListener('pointerdown', down);
+    vp.addEventListener('pointermove', move);
+    vp.addEventListener('pointerup', up);
+    vp.addEventListener('pointercancel', up);
+    return () => {
+      vp.removeEventListener('pointerdown', down);
+      vp.removeEventListener('pointermove', move);
+      vp.removeEventListener('pointerup', up);
+      vp.removeEventListener('pointercancel', up);
+    };
   }, [viewport]);
 
   /** 図全体が収まるように表示する */
