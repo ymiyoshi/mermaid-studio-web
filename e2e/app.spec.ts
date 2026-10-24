@@ -113,6 +113,28 @@ test('履歴の版と今の版を図で比べる（変えた・足した要素�
   expect(errors).toEqual([]);
 });
 
+test('Ctrl を押しながら複数のノードを選び、形をまとめて変えてから、まとめて消す', async ({ page }) => {
+  await openApp(page);
+  await node(page, '開始').click();
+  await node(page, '処理を実行').click({ modifiers: ['Control'] });
+  await node(page, '終了').click({ modifiers: ['Control'] });
+  await expect(page.locator('.panel-heading')).toHaveText('3 個のノード');
+  await expect(page.locator('.diagram-canvas .mmd-selected')).toHaveCount(3);
+  await page.getByLabel('形').selectOption('cylinder');
+  await expect.poll(() => editorText(page)).toContain('A[(開始)]');
+  const text = await editorText(page);
+  expect(text).toContain('C[(処理を実行)]');
+  expect(text).toContain('E[(終了)]');
+  expect(text).toContain('D[スキップ]');
+  expect((await historyLabels(page)).at(-1)).toBe('3 個の形を変更');
+
+  await page.locator('.diagram-viewport').focus();
+  await page.keyboard.press('Delete');
+  await expect.poll(() => editorText(page)).not.toContain('開始');
+  expect(await editorText(page)).not.toContain('終了');
+  expect((await historyLabels(page)).at(-1)).toBe('3 個の要素を削除');
+});
+
 test('右クリックのメニューから接続する', async ({ page }) => {
   await openApp(page);
   await node(page, '終了').click({ button: 'right' });

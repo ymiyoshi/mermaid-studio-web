@@ -1,6 +1,7 @@
 import { memo, useMemo, useState } from 'react';
 import { applyDiagramChange, revealRange, showToast, useSession } from '../core/session';
-import type { DiagramPlugin, ElementRef } from '../plugins/types';
+import { refKey, type DiagramPlugin, type ElementRef } from '../plugins/types';
+import { composeEach } from '../plugins/source';
 import { addRow, deleteRow, moveRow, setCell, tableRows, type TableDef, type TableRow } from '../plugins/table';
 import { FieldInput } from './FieldInput';
 import { t } from '../i18n';
@@ -12,6 +13,8 @@ interface Props {
   selected: ElementRef | null;
   /** 図で選択中の要素がソースのどこにあるか（表の行を強調する） */
   selectedFrom: number | null;
+  /** まとめて編集する要素（2 つ以上選んだとき。それ以外は空） */
+  multi?: ElementRef[];
   editable: boolean;
 }
 
@@ -38,7 +41,9 @@ const KIND_LABEL: Record<string, string> = {
 };
 
 // 図ビューはパンやドラッグのたびに描き直されるので、props が変わらないときは描き直さない
-export const PropertyPanel = memo(function PropertyPanel({ plugin, selected, selectedFrom, editable }: Props) {
+const NONE: ElementRef[] = [];
+
+export const PropertyPanel = memo(function PropertyPanel({ plugin, selected, selectedFrom, multi = NONE, editable }: Props) {
   const text = useSession((s) => s.current?.text);
   const source = useMemo(() => text?.toString() ?? '', [text]);
   const tables = plugin.tables ?? [];
@@ -63,6 +68,8 @@ export const PropertyPanel = memo(function PropertyPanel({ plugin, selected, sel
       <div className="panel-body">
         {activeTable ? (
           <TableEditor table={activeTable} source={source} editable={editable} selectedFrom={selectedFrom} />
+        ) : multi.length > 1 ? (
+          <BulkFields plugin={plugin} source={source} refs={multi} editable={editable} />
         ) : (
           <>
             <div className="panel-heading">
@@ -91,6 +98,49 @@ export const PropertyPanel = memo(function PropertyPanel({ plugin, selected, sel
     </div>
   );
 });
+
+/**
+ * まとめて編集: 選んだ要素に共通するプロパティ（同じ種類の要素の、ID 以外の項目）を並べる。
+ * 値がそろっていなければ空で出し、変えるとすべての要素に当てる（履歴は 1 ステップ）
+ */
+function BulkFields({ plugin, source, refs, editable }: { plugin: DiagramPlugin; source: string; refs: ElementRef[]; editable: boolean }) {
+  const kinds = [...new Set(refs.map((r) => r.kind))];
+  const fields = useMemo(() => {
+    if (kinds.length !== 1 || !plugin.inspect) return [];
+    const each = refs.map((r) => plugin.inspect!(source, r));
+    return each[0]
+      .filter((f) => !f.readonly && f.id !== 'id' && each.every((fs) => fs.some((g) => g.id === f.id && g.type === f.type)))
+      .map((f) => {
+        const values = new Set(each.map((fs) => fs.find((g) => g.id === f.id)!.value));
+        return { ...f, value: values.size === 1 ? f.value : '', placeholder: values.size === 1 ? f.placeholder : t('bulk.mixed') };
+      });
+  }, [plugin, source, refs, kinds.length]);
+  const key = refs.map(refKey).join(',');
+
+  return (
+    <>
+      <div className="panel-heading">{t('bulk.heading', { n: String(refs.length), kind: kinds.length === 1 ? (KIND_LABEL[kinds[0]] ?? kinds[0]) : t('bulk.mixedKinds') })}</div>
+      {fields.length === 0 ? (
+        <p className="muted small">{t(kinds.length === 1 ? 'bulk.noFields' : 'bulk.differentKinds')}</p>
+      ) : (
+        <div className="prop-grid">
+          {fields.map((f) => (
+            <label key={`${key}:${f.id}`} className="prop-row">
+              <span>{f.label}</span>
+              <FieldInput
+                field={f.type === 'select' && f.value === '' ? { ...f, options: [{ value: '', label: t('bulk.mixed') }, ...(f.options ?? [])] } : f}
+                disabled={!editable}
+                historyLabel={t('bulk.prop', { name: f.label, n: String(refs.length) })}
+                build={(src, v) => (v === '' && f.type === 'select' ? null : composeEach(src, refs, (s, r) => plugin.setProperty?.(s, r, f.id, v) ?? null))}
+              />
+            </label>
+          ))}
+        </div>
+      )}
+      <p className="muted small">{t('bulk.hint')}</p>
+    </>
+  );
+}
 
 function TableEditor({ table, source, editable, selectedFrom }: { table: TableDef; source: string; editable: boolean; selectedFrom: number | null }) {
   const rows = useMemo(() => tableRows(source, table), [source, table]);

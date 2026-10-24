@@ -45,6 +45,23 @@ export const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** 変更を当てた後のソース（変更の前後を比べる操作で使う） */
 export const applySpec = (source: string, spec: ChangeSpec) => ChangeSet.of(spec, source.length).apply(Text.of(source.split('\n'))).toString();
 
+/**
+ * 複数の要素への変更を 1 つにまとめる（まとめて編集）。make は、前の要素の変更を当てた後のソースに対する変更を返す。
+ * 1 つも作れなければ null。作れない要素（前の変更で消えたものなど）は飛ばす
+ */
+export function composeEach<T>(source: string, items: T[], make: (source: string, item: T) => ChangeSpec | null): ChangeSet | null {
+  let doc = Text.of(source.split('\n'));
+  let all: ChangeSet | null = null;
+  for (const item of items) {
+    const spec = make(doc.toString(), item);
+    if (!spec) continue;
+    const cs = ChangeSet.of(spec, doc.length);
+    all = all ? all.compose(cs) : cs;
+    doc = cs.apply(doc);
+  }
+  return all && !all.empty ? all : null;
+}
+
 /** id がトークンとして現れるか（前後が英数字・_ でない） */
 export function tokenRegex(id: string, flags = 'u'): RegExp {
   return new RegExp(`(?<![\\p{L}\\p{N}_])${escapeRe(id)}(?![\\p{L}\\p{N}_])`, flags);
