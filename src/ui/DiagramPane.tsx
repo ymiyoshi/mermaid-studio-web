@@ -5,6 +5,7 @@ import { pluginFor } from '../plugins/registry';
 import { refKey, sameRef, type ActionResult, type DiagramAction, type DiagramTarget, type ElementRef } from '../plugins/types';
 import { InlineLabelEditor, type LabelSession } from './InlineLabelEditor';
 import { PropertyPanel } from './PropertyPanel';
+import { ErrorBanner } from './ErrorBanner';
 import { getSetting, putSetting } from '../storage/db';
 import { DRAG_THRESHOLD_PX, fixSvgSize, rectIn, unionRect, usePanZoom, type Rect, type ViewBox } from './usePanZoom';
 import { contains, findDrop, markContainers, type DropCandidate, type DropSpot } from './reorderDrop';
@@ -366,13 +367,8 @@ export function DiagramPane() {
           {t('toolbar.fit')}
         </button>
       </div>
-      {status === 'error' && error && (
-        <div className="error-banner" role="alert">
-          <strong>{svg ? t('error.banner') : t('error.bannerNoSvg')}</strong>
-          {error.line && <span>{t('error.line', { line: String(error.line) })}</span>}
-          <pre>{error.message.split('\n').slice(0, 4).join('\n')}</pre>
-        </div>
-      )}
+      {status === 'error' && error && <ErrorBanner error={error} hasSvg={svg !== null} />}
+
       {connect && (
         <div className="connect-banner" role="status">
           {connect.action.prompt}

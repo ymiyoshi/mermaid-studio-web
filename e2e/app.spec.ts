@@ -25,6 +25,16 @@ test('テキストの変更が図に反映され、構文エラーの間は最�
   await expect(page.locator('.diagram-viewport')).not.toHaveClass(/stale/);
 });
 
+test('構文エラーを日本語で説明し、ボタンで直せる', async ({ page }) => {
+  await openApp(page);
+  await setEditorText(page, 'flowchart LR\n  A[開始 --> B');
+  await expect(page.locator('.error-summary')).toHaveText('2 行目の「[」が閉じていません。');
+  await page.getByRole('button', { name: '「]」で閉じる' }).click();
+  await expect.poll(() => editorText(page)).toContain('A[開始] --> B');
+  await expect(page.locator('.error-banner')).toHaveCount(0);
+  expect((await historyLabels(page)).at(-1)).toBe('エラーを直す: 「]」で閉じる');
+});
+
 test('ラベルをダブルクリックで直し、Tab で次のノードを足す（履歴は操作ごとに 1 ステップ）', async ({ page }) => {
   await openApp(page);
   await node(page, '開始').dblclick();

@@ -15,6 +15,7 @@ import { applyChanges, editorBus, redo, registerEditorFlush, setSelection, undo,
 import { useRender } from '../render/pipeline';
 import { mermaidHighlighting, mermaidLanguage } from '../render/mermaidLanguage';
 import { mermaidCompletion } from '../render/completion';
+import { explainError } from '../render/errorHelp';
 import type { Sel } from '../core/history';
 
 // CodeMirror 標準の history() は使わない。undo はアプリの履歴ツリーが一元管理する（§8.1）。
@@ -145,8 +146,10 @@ export function EditorPane() {
     const diags: Diagnostic[] = [];
     if (error) {
       const doc = view.state.doc;
-      const line = doc.line(Math.min(Math.max(error.line ?? 1, 1), doc.lines));
-      diags.push({ from: line.from, to: line.to, severity: 'error', message: error.message });
+      // 日本語の説明が指す行（閉じていない括弧の行など）を優先する。原文も後ろに残す
+      const help = explainError(doc.toString(), error);
+      const line = doc.line(Math.min(Math.max(help.line ?? error.line ?? 1, 1), doc.lines));
+      diags.push({ from: line.from, to: line.to, severity: 'error', message: `${help.summary}\n\n${error.message}` });
     }
     view.dispatch(setDiagnostics(view.state, diags));
   }, [error]);

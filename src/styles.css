@@ -726,6 +726,24 @@ select:focus-visible {
   white-space: pre;
 }
 
+.error-banner .error-summary {
+  margin: 2px 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.error-banner .error-fixes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 2px 0;
+}
+
+.error-banner details summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
 .diagram-viewport {
   position: relative;
   flex: 1;
