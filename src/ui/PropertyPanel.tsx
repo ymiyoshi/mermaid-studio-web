@@ -32,6 +32,7 @@ const KIND_LABEL: Record<string, string> = {
   item: '項目',
   note: '注釈',
   block: '枠',
+  'block-item': 'ブロック',
   section: '区切り',
   subgraph: 'サブグラフ',
 };

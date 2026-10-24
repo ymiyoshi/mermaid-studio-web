@@ -40,6 +40,7 @@ const TYPES: Record<string, string> = {
   sankey: 'sankey',
   requirement: 'requirement',
   xychart: 'xychart',
+  block: 'block',
 };
 
 function load(id: string): { svg: SVGSVGElement; source: string; targets: DiagramTarget[] } {

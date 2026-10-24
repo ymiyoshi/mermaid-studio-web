@@ -236,4 +236,18 @@ Template,Saved,20
     line [10, 22, 31, 45]
 `,
   },
+  {
+    id: 'block',
+    name: 'ブロック図',
+    text: `block-beta
+    columns 3
+    %% 画面とサーバーの構成
+    front["フロント"] api["API"]:2
+    block:back:3
+        db[("データベース")] cache["キャッシュ"] queue>"キュー"]
+    end
+    front --> api
+    api --> db
+`,
+  },
 ];

@@ -215,6 +215,23 @@ test('Ctrl+K のコマンドパレットで、テンプレートから図を作�
   await expect(page.locator('.title-input')).toHaveValue('フローチャート');
 });
 
+test('ブロック図: 次のブロックを足してラベルを付け、ブロックを消すと矢印も消える', async ({ page }) => {
+  await openApp(page);
+  await newFromTemplate(page, 'ブロック図');
+  const blockNode = (text: string) => page.locator('.diagram-canvas g.node', { hasText: text });
+  await blockNode('キャッシュ').click();
+  await expect(page.locator('.panel-heading')).toHaveText('ブロック: cache');
+  await page.keyboard.press('Tab');
+  await page.locator('.inline-label-editor input').fill('ログ');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => editorText(page)).toContain('cache["キャッシュ"] b1["ログ"] queue');
+
+  await blockNode('API').click();
+  await page.keyboard.press('Delete');
+  await expect.poll(() => editorText(page)).not.toContain('api');
+  await expect(blockNode('API')).toHaveCount(0);
+});
+
 test('円グラフは表で編集できる', async ({ page }) => {
   await openApp(page);
   await newFromTemplate(page, '円グラフ');
