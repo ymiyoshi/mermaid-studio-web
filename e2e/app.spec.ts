@@ -194,6 +194,58 @@ test('発表モードで、図を全画面で順に見せる', async ({ page }) 
   expect(errors).toEqual([]);
 });
 
+test('まとめて消すとき、番号で指すエッジは元の図の番号のまま消す', async ({ page }) => {
+  await openApp(page);
+  // はい（B→C）と、C→E のエッジを選ぶ
+  await page.locator('.diagram-canvas g.edgeLabel', { hasText: 'はい' }).click();
+  await page.locator('.diagram-canvas path[data-id="L_C_E_0"] + .mmd-hit').click({ modifiers: ['Control'], force: true });
+  await expect(page.locator('.panel-heading')).toHaveText('2 個のエッジ');
+  await page.locator('.diagram-viewport').focus();
+  await page.keyboard.press('Delete');
+  await expect.poll(() => editorText(page)).not.toContain('C --> E');
+  const text = await editorText(page);
+  expect(text).not.toContain('|はい|');
+  expect(text).toContain('D --> E');
+});
+
+test('まとめて編集: 名前は出さず、「（なし）」を選べる', async ({ page }) => {
+  await openApp(page);
+  await setEditorText(page, 'flowchart LR\n  A:::hot --> B:::hot\n  classDef hot fill:#f96');
+  await expect(node(page, 'B')).toBeVisible();
+  await node(page, 'A').click();
+  await node(page, 'B').click({ modifiers: ['Control'] });
+  await expect(page.locator('.panel-heading')).toHaveText('2 個のノード');
+  await expect(page.getByLabel('ID')).toHaveCount(0);
+  await page.locator('.property-panel').getByLabel('クラス').selectOption({ label: '（なし）' });
+  await expect.poll(() => editorText(page)).toContain('A --> B');
+
+  await newFromTemplate(page, '状態遷移図');
+  await page.locator('.diagram-canvas g.node', { hasText: '待機' }).click();
+  await page.locator('.diagram-canvas g.node', { hasText: '実行中' }).click({ modifiers: ['Control'] });
+  await expect(page.locator('.panel-heading')).toHaveText('2 個の状態');
+  await expect(page.getByLabel('状態の名前（ID）')).toHaveCount(0);
+});
+
+test('宣言行で向きを打って Enter を押すと、補完ではなく改行になる', async ({ page }) => {
+  await openApp(page);
+  await setEditorText(page, '');
+  await page.keyboard.type('flowchart TD');
+  await page.waitForTimeout(300);
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('A');
+  await expect.poll(() => editorText(page)).toContain('flowchart TD\nA');
+});
+
+test('履歴のペインを閉じていても、コマンドパレットからタイムラプスを開ける', async ({ page }) => {
+  await openApp(page);
+  await page.getByTitle('履歴を表示・隠す').click();
+  await expect(page.locator('.history-pane')).toHaveCount(0);
+  await page.keyboard.press('Control+K');
+  await page.getByRole('dialog', { name: 'コマンド' }).getByRole('combobox').fill('タイムラプス');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog', { name: '作った過程を再生' })).toBeVisible();
+});
+
 test('右クリックのメニューから接続する', async ({ page }) => {
   await openApp(page);
   await node(page, '終了').click({ button: 'right' });
@@ -425,6 +477,30 @@ test('英語の UI に切り替えると、画面と図からの操作が英語�
   await page.getByLabel('Language').selectOption('ja');
   await expect(page.getByRole('button', { name: '＋ 新規' })).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test('ピンチの前に指 1 本で並べ替えを始めていても、ピンチの後に要素を動かさない', async ({ browser }) => {
+  const context = await browser.newContext({ locale: 'ja-JP', viewport: { width: 1440, height: 900 }, hasTouch: true });
+  const page = await context.newPage();
+  await openApp(page);
+  await newFromTemplate(page, 'シーケンス図');
+  await expect(page.locator('.diagram-viewport')).toHaveClass(/editable/);
+  const before = await editorText(page);
+  const msg = (await page.locator('.diagram-canvas text.messageText', { hasText: 'リクエスト' }).boundingBox())!;
+  const x = msg.x + msg.width / 2;
+  const y = msg.y + msg.height / 2;
+  const cdp = await context.newCDPSession(page);
+  const send = (type: 'touchStart' | 'touchMove' | 'touchEnd', points: { x: number; y: number; id: number }[]) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: points });
+  // 1 本目でメッセージを下へ動かし始める
+  await send('touchStart', [{ x, y, id: 1 }]);
+  for (const dy of [10, 30, 60]) await send('touchMove', [{ x, y: y + dy, id: 1 }]);
+  // 2 本目を置いてピンチし、離す
+  await send('touchStart', [{ x, y: y + 60, id: 1 }, { x: x + 100, y: y + 60, id: 2 }]);
+  await send('touchMove', [{ x: x - 50, y: y + 60, id: 1 }, { x: x + 150, y: y + 60, id: 2 }]);
+  await send('touchEnd', []);
+  await page.waitForTimeout(500);
+  expect(await editorText(page)).toBe(before);
+  await context.close();
 });
 
 test('狭い画面ではタブで切り替える', async ({ page }) => {

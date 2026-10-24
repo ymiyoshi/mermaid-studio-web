@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useRender } from '../render/pipeline';
 import { applyDiagramChange, revealRange, showToast, useSession } from '../core/session';
 import { pluginFor } from '../plugins/registry';
-import { refKey, sameRef, type ActionResult, type DiagramAction, type DiagramTarget, type ElementRef } from '../plugins/types';
+import { isPositional, refKey, sameRef, type ActionResult, type DiagramAction, type DiagramTarget, type ElementRef } from '../plugins/types';
 import { InlineLabelEditor, type LabelSession } from './InlineLabelEditor';
 import { PropertyPanel } from './PropertyPanel';
 import { ErrorBanner } from './ErrorBanner';
@@ -56,7 +56,7 @@ export function DiagramPane() {
 
   const viewport = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLDivElement>(null);
-  const { view, fit, zoomBy, scrollIntoView, beginDrag, moveDrag, endDrag } = usePanZoom(viewport, canvas);
+  const { view, fit, zoomBy, scrollIntoView, beginDrag, moveDrag, endDrag } = usePanZoom(viewport, canvas, () => endReorder());
   const [targets, setTargets] = useState<DiagramTarget[]>([]);
   // 選択中の要素（先頭が主な選択。Shift / Ctrl を押しながらのクリックで足し引きする）
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
@@ -218,18 +218,22 @@ export function DiagramPane() {
   };
 
   /** 選んだ要素をまとめて消す（要素ごとの削除の操作を順に当て、履歴は 1 ステップにする） */
+  /** 描いた図が今のテキストと合っているか（番号で指す要素は、合っているときだけ操作する） */
+  const isFresh = () => useSession.getState().current?.text.toString() === svgSource;
+  const usable = (ref: ElementRef) => !isPositional(ref) || isFresh();
+
   const deleteMany = async (refs: ElementRef[]) => {
     const source = useSession.getState().current?.text.toString();
-    if (source === undefined) return;
+    if (source === undefined || !refs.every(usable)) return;
     const del = (kind: string) => plugin.actions?.find((a) => a.key === 'Delete' && a.arity === 1 && applies(a, { kind, id: '' }));
-    const change = composeEach(source, refs, (src, ref) => del(ref.kind)?.run(src, [ref])?.change ?? null);
+    const change = composeEach(source, refs, (src, ref) => del(ref.kind)?.run(src, [ref])?.change ?? null, isPositional);
     if (!change) return showToast(t('action.unsupported'));
     await commit({ change, label: t('bulk.deleted', { n: String(refs.length) }) }, true);
   };
 
   const runAction = async (action: DiagramAction, refs: ElementRef[]) => {
     const source = useSession.getState().current?.text.toString();
-    if (source === undefined || !canEdit) return;
+    if (source === undefined || !canEdit || !refs.every(usable)) return;
     await commit(action.run(source, refs), action.danger);
   };
 
@@ -326,6 +330,8 @@ export function DiagramPane() {
       return;
     }
     // Shift / Ctrl を押しながらのクリック: まとめて編集する要素に足す・外す
+    // 描き直しを待つ間は、番号で指す要素を選ばない（古い図の番号は、今のテキストの別の要素を指すことがある）
+    if (hit?.ref && !usable(hit.ref)) return;
     if ((e.shiftKey || e.ctrlKey || e.metaKey) && hit?.ref) {
       const k = keyOf(hit);
       setSelectedKeys((ks) => (ks.includes(k) ? ks.filter((x) => x !== k) : [...ks, k]));
@@ -367,7 +373,7 @@ export function DiagramPane() {
   // 右クリック: 要素に使える操作のメニュー
   const onContextMenu = (e: React.MouseEvent) => {
     const hit = targetAt(document.elementFromPoint(e.clientX, e.clientY));
-    if (!hit) return;
+    if (!hit || (hit.ref && !usable(hit.ref))) return;
     e.preventDefault();
     setSelectedKey(keyOf(hit));
     const vp = viewport.current!.getBoundingClientRect();

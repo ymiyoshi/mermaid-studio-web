@@ -45,6 +45,8 @@ export interface BlockItem {
   line: SourceLine;
   /** 入れ子の block:ID … end の ID（トップレベルなら null） */
   parent: string | null;
+  /** 行を最後まで読めたか（同じ行の矢印 a --> b や、読めない書き方があれば false。そうした行は行ごと消さない） */
+  complete: boolean;
 }
 
 export interface BlockGroup {
@@ -83,13 +85,15 @@ function findClose(text: string, pos: number, close: string): number {
 /** 1 行に並んだブロックを読む */
 function readItems(line: SourceLine, parent: string | null): BlockItem[] {
   const out: BlockItem[] = [];
+  // 途中で読めなくなったら、それまでのブロックに「行を読み切れなかった」印を付けて返す
+  const partial = () => out.map((x) => ({ ...x, complete: false }));
   const text = line.text;
   let i = 0;
   while (i < text.length) {
     while (i < text.length && /\s/.test(text[i])) i++;
     if (i >= text.length) break;
     const m = ID.exec(text.slice(i));
-    if (!m) return out;
+    if (!m) return partial();
     const start = i;
     const id = m[0];
     i += id.length;
@@ -108,7 +112,7 @@ function readItems(line: SourceLine, parent: string | null): BlockItem[] {
           close = c.close;
         }
       }
-      if (closeAt < 0) return out;
+      if (closeAt < 0) return partial();
       const innerFrom = i + open.length;
       const inner = text.slice(innerFrom, closeAt);
       const q = /^"(.*)"$/s.exec(inner);
@@ -123,8 +127,8 @@ function readItems(line: SourceLine, parent: string | null): BlockItem[] {
       i += w[0].length;
     }
     // ブロックの後は空白か行末でなければ、ブロックの並びではない
-    if (i < text.length && !/\s/.test(text[i])) return out;
-    if (id !== 'space') out.push({ id, range: { from: line.from + start, to: line.from + i }, label, shape, width, line, parent });
+    if (i < text.length && !/\s/.test(text[i])) return partial();
+    if (id !== 'space') out.push({ id, range: { from: line.from + start, to: line.from + i }, label, shape, width, line, parent, complete: true });
   }
   return out;
 }
@@ -201,7 +205,8 @@ function deleteBlock(source: string, id: string): ChangeSpec[] | null {
     return group.close ? [removeLines(source, group.open, group.close), ...edgeLines] : null;
   }
   const item = p.items.find((x) => x.id === id);
-  if (!item) return null;
+  // 読み切れなかった行（a["A"] --> b["B"] など）は、どこまでがこのブロックか確かでないので消さない
+  if (!item || !item.complete) return null;
   const onLine = p.items.filter((x) => x.line.index === item.line.index);
   if (onLine.length === 1) return [removeLine(source, item.line), ...edgeLines];
   // 同じ行の他のブロックは残す。前の空白ごと消す（行頭のブロックなら後ろの空白ごと）

@@ -280,6 +280,7 @@ const en: Record<MessageKey, string> = { ...coreEn, ...flowchartLocale.en, ...se
 
 export function t(key: MessageKey, params?: Record<string, string>): string {
   let s: string = (lang === 'en' ? en : ja)[key];
-  if (params) for (const [k, v] of Object.entries(params)) s = s.replaceAll(`{${k}}`, v);
+  // 置き換える側を関数にする（文字列だと、利用者の文字列の $& や $$ が置き換えの記法として読まれる）
+  if (params) for (const [k, v] of Object.entries(params)) s = s.replaceAll(`{${k}}`, () => v);
   return s;
 }

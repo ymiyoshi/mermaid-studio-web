@@ -125,9 +125,12 @@ export function setFrontmatterValue(source: string, path: string[], value: strin
       let last = target.line;
       const walk = (e: YamlEntry) => e.children.forEach((c) => ((last = c.line.index > last.index ? c.line : last), walk(c)));
       walk(chain[top]);
-      // frontmatter が空になるなら、--- ごと消す
+      // frontmatter が空になるなら、--- ごと消す。ただし読んでいない行（# のコメントなど）が残るなら、その行は消さない
       const remaining = fm.entries.length - (top === 0 ? 1 : 0);
-      if (remaining === 0) return { from: 0, to: Math.min(fm.close.to + 1, source.length) };
+      const others = splitLines(source)
+        .slice(fm.open.index + 1, fm.close.index)
+        .some((l) => (l.index < first.index || l.index > last.index) && l.text.trim() !== '');
+      if (remaining === 0 && !others) return { from: 0, to: Math.min(fm.close.to + 1, source.length) };
       return { from: first.from, to: lineSpan(last).to };
     }
     if (target.value) {

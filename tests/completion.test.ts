@@ -39,6 +39,7 @@ describe('入力補完', () => {
     expect(completeAt(src, src.length)).toBeNull();
     expect(labels(completeAt(src, src.length, true))).toContain('subgraph');
   });
+
   it('本文（: の後・括弧や引用符の中）と日本語の語では自動で出さない（Ctrl+Space なら出す）', () => {
     const msg = 'sequenceDiagram\n  U->>S: リクエスト\n  S->>U: Re';
     expect(completeAt(msg, msg.length)).toBeNull();
@@ -52,5 +53,11 @@ describe('入力補完', () => {
     // 閉じた括弧の後は本文の外
     const after = 'flowchart LR\n  Kensaku[検索] --> Ke';
     expect(labels(completeAt(after, after.length))).toContain('Kensaku');
+  });
+
+  it('宣言行の 2 つ目の語（向きなど）には図種を出さない', () => {
+    expect(completeAt('flowchart TD', 12)).toBeNull();
+    expect(completeAt('flowchart TB', 12, true)).toBeNull();
+    expect(labels(completeAt('  flow', 6))).toContain('flowchart TD');
   });
 });

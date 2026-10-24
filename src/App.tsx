@@ -11,6 +11,7 @@ import { useExternalChangeCheck, useFileDrop, useGlobalShortcuts, useMobile } fr
 import { CommandPalette } from './ui/CommandPalette';
 import { SnippetsDialog } from './ui/SnippetsDialog';
 import { PresentationView } from './ui/PresentationView';
+import { TimelapseHost } from './ui/TimelapseView';
 import { t } from './i18n';
 
 const MOBILE_TABS: { id: MobileTab; label: () => string }[] = [
@@ -76,6 +77,7 @@ export function App() {
         {layout.paletteOpen && <CommandPalette onClose={() => useLayout.setState({ paletteOpen: false })} />}
         {layout.snippetsOpen && <SnippetsDialog onClose={() => useLayout.setState({ snippetsOpen: false })} />}
         {layout.presentOpen && <PresentationView onClose={closePresentation} />}
+        {layout.timelapseOpen && <TimelapseHost />}
         {toast && (
           <div className="toast" role="status" key={toast.id}>
             {toast.message}
@@ -117,6 +119,7 @@ export function App() {
       {layout.paletteOpen && <CommandPalette onClose={() => useLayout.setState({ paletteOpen: false })} />}
       {layout.snippetsOpen && <SnippetsDialog onClose={() => useLayout.setState({ snippetsOpen: false })} />}
       {layout.presentOpen && <PresentationView onClose={closePresentation} />}
+      {layout.timelapseOpen && <TimelapseHost />}
       {dragging && <div className="drop-overlay">{t('file.drop')}</div>}
       {toast && (
         <div className="toast" role="status" key={toast.id}>

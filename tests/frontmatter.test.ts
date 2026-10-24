@@ -47,4 +47,9 @@ describe('図の先頭の設定（frontmatter）', () => {
     expect(await set(two, PRIMARY, '')).toBe(`---\ntitle: T\nconfig:\n  theme: base\n---\n${BODY}`);
     expect(setFrontmatterValue(BODY, THEME, '')).toBeNull();
   });
+
+  it('frontmatter の読まない行（# のコメントなど）は、空になっても消さない', async () => {
+    const src = `---\n# メモ\nconfig:\n  theme: dark\n---\n${BODY}`;
+    expect(await set(src, THEME, '')).toBe(`---\n# メモ\n---\n${BODY}`);
+  });
 });

@@ -61,10 +61,10 @@ export function SnippetsDialog({ onClose }: { onClose(): void }) {
         <h2>{t('snippet.title')}</h2>
         <section className="snippet-register">
           <input value={name} placeholder={t('snippet.namePlaceholder')} aria-label={t('snippet.name')} onChange={(e) => setName(e.target.value)} />
-          <button className="btn" disabled={selected.trim() === ''} onClick={() => void register(selected)}>
+          <button className="btn" disabled={!loaded || selected.trim() === ''} onClick={() => void register(selected)}>
             {t('snippet.addSelection')}
           </button>
-          <button className="btn" disabled={bodyText.trim() === ''} onClick={() => void register(bodyText)}>
+          <button className="btn" disabled={!loaded || bodyText.trim() === ''} onClick={() => void register(bodyText)}>
             {t('snippet.addBody')}
           </button>
         </section>

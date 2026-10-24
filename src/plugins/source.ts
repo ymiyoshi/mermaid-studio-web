@@ -46,13 +46,28 @@ export const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 export const applySpec = (source: string, spec: ChangeSpec) => ChangeSet.of(spec, source.length).apply(Text.of(source.split('\n'))).toString();
 
 /**
- * 複数の要素への変更を 1 つにまとめる（まとめて編集）。make は、前の要素の変更を当てた後のソースに対する変更を返す。
- * 1 つも作れなければ null。作れない要素（前の変更で消えたものなど）は飛ばす
+ * 複数の要素への変更を 1 つにまとめる（まとめて編集）。1 つも作れなければ null。作れない要素（前の変更で消えたものなど）は飛ばす。
+ * - 番号で指す要素（positional が true。エッジやメッセージ）は、他の要素の変更の後では番号がずれて別の要素に当たるので、
+ *   先にまとめて、すべて元のソースで作り、先の変更に合わせて位置を写しながら重ねる（先に消した範囲を消す変更は何もしない）
+ * - それ以外（ID で指す要素）は、前の変更を当てた後のソースで順に作る（ノードを消すとき、残す定義を書き戻すことがあるため、
+ *   元のソースで作った変更どうしを重ねると、消したはずの定義が残る）
  */
-export function composeEach<T>(source: string, items: T[], make: (source: string, item: T) => ChangeSpec | null): ChangeSet | null {
-  let doc = Text.of(source.split('\n'));
+export function composeEach<T>(
+  source: string,
+  items: T[],
+  make: (source: string, item: T) => ChangeSpec | null,
+  positional: (item: T) => boolean = () => false,
+): ChangeSet | null {
   let all: ChangeSet | null = null;
-  for (const item of items) {
+  for (const item of items.filter(positional)) {
+    const spec = make(source, item);
+    if (!spec) continue;
+    const cs = ChangeSet.of(spec, source.length);
+    all = all ? all.compose(cs.map(all)) : cs;
+  }
+  let doc = Text.of(source.split('\n'));
+  if (all) doc = all.apply(doc);
+  for (const item of items.filter((x) => !positional(x))) {
     const spec = make(doc.toString(), item);
     if (!spec) continue;
     const cs = ChangeSet.of(spec, doc.length);

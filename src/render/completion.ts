@@ -118,8 +118,9 @@ export function completeAt(source: string, pos: number, explicit = false): { fro
   if (!explicit && (!/^[A-Za-z_]/.test(word) || inFreeText(before.slice(0, before.length - word.length)))) return null;
 
   const { header } = bodyLines(source);
-  // 宣言行（まだ無いか、いま打っている行）では図種を出す
+  // 宣言行（まだ無いか、いま打っている行）では、最初の語にだけ図種を出す（flowchart TD の TD などには出さない）
   if (!header || header.from === lineStart) {
+    if (before.slice(0, before.length - word.length).trim() !== '') return null;
     return { from, options: DIAGRAM_TYPES.map(([label, detail]) => ({ label, detail, type: 'type' as const })) };
   }
   const kind = /^\s*([\w-]+)/.exec(header.text)?.[1] ?? '';

@@ -3,7 +3,8 @@ import type { HistoryTree } from '../core/history';
 import { renderSvg } from '../render/mermaid';
 import { recordTimelapse, videoSupported } from '../io/timelapseVideo';
 import { download, safeFileName } from '../io/download';
-import { showToast } from '../core/session';
+import { showToast, useSession } from '../core/session';
+import { useLayout } from './layoutStore';
 import { pathToHead, sampleFrames } from './timelapse';
 import { t } from '../i18n';
 
@@ -58,6 +59,8 @@ export function TimelapseView({ tree, title, onClose }: { tree: HistoryTree; tit
 
   const recordingRef = useRef(recording);
   recordingRef.current = recording;
+  // 閉じる以外の理由（図の切り替えなど）で画面が消えても、書き出しを止める（止めないと、あとでダウンロードが始まる）
+  useEffect(() => () => recordingRef.current?.abort.abort(), []);
   const close = () => {
     recordingRef.current?.abort.abort();
     onClose();
@@ -140,4 +143,17 @@ export function TimelapseView({ tree, title, onClose }: { tree: HistoryTree; tit
       </div>
     </div>
   );
+}
+
+/** App が出すタイムラプス。開いている図の履歴を使い、図を切り替えたら閉じる */
+export function TimelapseHost() {
+  const current = useSession((s) => s.current);
+  const docId = current?.id;
+  const opened = useRef(docId);
+  const close = () => useLayout.setState({ timelapseOpen: false });
+  useEffect(() => {
+    if (docId !== opened.current) close();
+  }, [docId]);
+  if (!current || docId !== opened.current) return null;
+  return <TimelapseView tree={current.tree} title={current.title} onClose={close} />;
 }

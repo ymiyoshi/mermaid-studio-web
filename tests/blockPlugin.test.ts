@@ -104,4 +104,10 @@ describe('block 図', () => {
     expect(await apply(bare, blockPlugin.setProperty!(bare, block('a'), 'label', 'エー')!)).toBe('block-beta\n  a["エー"] b\n');
     expect(applySpec(bare, blockPlugin.setProperty!(bare, block('b'), 'shape', 'circle')!)).toBe('block-beta\n  a b(("b"))\n');
   });
+
+  it('同じ行に矢印などの読めない書き方がある行のブロックは消さない（他のブロックを巻き込まないように）', () => {
+    const src = 'block-beta\n  columns 2\n  a["A"] --> b["B"]\n  c["C"]\n';
+    expect(run('delete', src, [block('a')])).toBeNull();
+    expect(applySpec(src, run('delete', src, [block('c')])!.change)).toBe('block-beta\n  columns 2\n  a["A"] --> b["B"]\n');
+  });
 });

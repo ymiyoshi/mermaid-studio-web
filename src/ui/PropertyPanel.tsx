@@ -1,6 +1,6 @@
 import { memo, useMemo, useState } from 'react';
 import { applyDiagramChange, revealRange, showToast, useSession } from '../core/session';
-import { refKey, type DiagramPlugin, type ElementRef } from '../plugins/types';
+import { isPositional, refKey, type DiagramPlugin, type ElementRef } from '../plugins/types';
 import { composeEach } from '../plugins/source';
 import { DIAGRAM_THEMES, THEME_COLORS, getFrontmatterValue, setFrontmatterValue } from '../plugins/frontmatter';
 import { withValue } from '../plugins/types';
@@ -111,16 +111,24 @@ export const PropertyPanel = memo(function PropertyPanel({ plugin, selected, sel
  * まとめて編集: 選んだ要素に共通するプロパティ（同じ種類の要素の、ID 以外の項目）を並べる。
  * 値がそろっていなければ空で出し、変えるとすべての要素に当てる（履歴は 1 ステップ）
  */
+/** まとめて編集で、値がそろっていない選択欄の印（どの選択肢の値とも重ならない） */
+const MIXED = '\u0000mixed';
+
 function BulkFields({ plugin, source, refs, editable }: { plugin: DiagramPlugin; source: string; refs: ElementRef[]; editable: boolean }) {
   const kinds = [...new Set(refs.map((r) => r.kind))];
   const fields = useMemo(() => {
     if (kinds.length !== 1 || !plugin.inspect) return [];
     const each = refs.map((r) => plugin.inspect!(source, r));
     return each[0]
-      .filter((f) => !f.readonly && f.id !== 'id' && each.every((fs) => fs.some((g) => g.id === f.id && g.type === f.type)))
+      // ID や名前（確定したときに反映する欄）は、まとめて変えると全部が同じ名前になって 1 つにまとまるので出さない
+      .filter((f) => !f.readonly && !f.commitOnBlur && f.id !== 'id' && f.id !== 'name' && each.every((fs) => fs.some((g) => g.id === f.id && g.type === f.type)))
       .map((f) => {
         const values = new Set(each.map((fs) => fs.find((g) => g.id === f.id)!.value));
-        return { ...f, value: values.size === 1 ? f.value : '', placeholder: values.size === 1 ? f.placeholder : t('bulk.mixed') };
+        if (values.size === 1) return f;
+        // 値がそろっていない。選択欄は「（いろいろ）」という選べない印を出す（'' は「なし」などの本当の値のことがある）
+        return f.type === 'select'
+          ? { ...f, value: MIXED, options: [{ value: MIXED, label: t('bulk.mixed') }, ...(f.options ?? [])] }
+          : { ...f, value: '', placeholder: t('bulk.mixed') };
       });
   }, [plugin, source, refs, kinds.length]);
   const key = refs.map(refKey).join(',');
@@ -136,10 +144,10 @@ function BulkFields({ plugin, source, refs, editable }: { plugin: DiagramPlugin;
             <label key={`${key}:${f.id}`} className="prop-row">
               <span>{f.label}</span>
               <FieldInput
-                field={f.type === 'select' && f.value === '' ? { ...f, options: [{ value: '', label: t('bulk.mixed') }, ...(f.options ?? [])] } : f}
+                field={f}
                 disabled={!editable}
                 historyLabel={t('bulk.prop', { name: f.label, n: String(refs.length) })}
-                build={(src, v) => (v === '' && f.type === 'select' ? null : composeEach(src, refs, (s, r) => plugin.setProperty?.(s, r, f.id, v) ?? null))}
+                build={(src, v) => (v === MIXED ? null : composeEach(src, refs, (s, r) => plugin.setProperty?.(s, r, f.id, v) ?? null, isPositional))}
               />
             </label>
           ))}

@@ -4,7 +4,6 @@ import type { HistoryNode, HistoryTree, Origin } from '../core/history';
 import { renderSvg } from '../render/mermaid';
 import { layoutHistory } from './historyLayout';
 import { CompareView } from './CompareView';
-import { TimelapseView } from './TimelapseView';
 import { useLayout } from './layoutStore';
 import { locale, t } from '../i18n';
 
@@ -105,8 +104,7 @@ export function HistoryPane() {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [confirmPrune, setConfirmPrune] = useState(false);
   const [compare, setCompare] = useState<{ before: string; after: string } | null>(null);
-  // コマンドパレットからも開くので、ストアに持つ
-  const timelapse = useLayout((s) => s.timelapseOpen);
+  // タイムラプスは App が出す（履歴のペインを閉じていても、コマンドパレットから開けるように）
   const setTimelapse = (v: boolean) => useLayout.setState({ timelapseOpen: v });
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -153,7 +151,6 @@ export function HistoryPane() {
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     setPreview(null);
     setCompare(null);
-    setTimelapse(false);
   }, [docId]);
 
   if (!current || !layout) return <section className="pane history-pane" />;
@@ -345,7 +342,6 @@ export function HistoryPane() {
       </div>
       {/* 切り替えた直後の描画では、まだ前の図の版を指していることがある。今の図に無い版は出さない */}
       {preview && current.tree.nodes.has(preview.node.id) && <HistoryPreview tree={current.tree} preview={preview} />}
-      {timelapse && <TimelapseView tree={current.tree} title={current.title} onClose={() => setTimelapse(false)} />}
       {compare && current.tree.nodes.has(compare.before) && current.tree.nodes.has(compare.after) && (
         <CompareView tree={current.tree} initialBefore={compare.before} initialAfter={compare.after} onClose={() => setCompare(null)} />
       )}

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Sel } from '../core/history';
 import { getSetting, putSetting } from '../storage/db';
+import { bodyLines } from '../plugins/source';
 
 // 部品集: よく使う図の一部を登録しておき、カーソルのある行の下に差し込む。
 // 部品は IndexedDB の設定（settings の 'snippets'）に保存する。保存形式（DB の版）は変えない。
@@ -28,13 +29,20 @@ async function save(items: Snippet[]) {
   await putSetting(KEY, items);
 }
 
+/** 保存してある部品を読み終える前に書き込むと、保存済みの部品を上書きしてしまうので、先に読む */
+async function ensureLoaded() {
+  if (!useSnippets.getState().loaded) await loadSnippets();
+}
+
 export async function addSnippet(name: string, text: string, kind: string) {
+  await ensureLoaded();
   const s: Snippet = { id: crypto.randomUUID(), name: name.trim() || text.trim().split('\n')[0].slice(0, 30), text, kind, createdAt: Date.now() };
   await save([...useSnippets.getState().items, s]);
   return s;
 }
 
 export async function removeSnippet(id: string) {
+  await ensureLoaded();
   await save(useSnippets.getState().items.filter((x) => x.id !== id));
 }
 
@@ -59,24 +67,30 @@ export function normalizeSnippet(text: string): string {
 
 /**
  * 部品を差し込む変更。カーソルのある行の下に、その行のインデントにそろえて足す。
- * 宣言行の上なら本文のインデント（4 つ）にし、空の行ならその行を置き換える。差し込んだ範囲を選んだ状態にする
+ * カーソルが宣言行かそれより上（frontmatter・先頭のコメント）なら宣言行の下に本文のインデントで足し、
+ * 空の行ならその行を置き換える。差し込んだ範囲を選んだ状態にする
  */
 export function snippetInsertion(source: string, sel: Sel, text: string): { from: number; to: number; insert: string; selection: Sel } {
   const body = normalizeSnippet(text);
   const pos = Math.min(Math.max(sel.head, 0), source.length);
-  const lineStart = source.lastIndexOf('\n', pos - 1) + 1;
+  // pos が 0 のときに lastIndexOf('\n', -1) が先頭の改行を拾わないように
+  const lineStart = pos === 0 ? 0 : source.lastIndexOf('\n', pos - 1) + 1;
   const nl = source.indexOf('\n', pos);
   const lineEnd = nl < 0 ? source.length : nl;
   const line = source.slice(lineStart, lineEnd);
-  const kind = diagramKind(source);
-  const isHeader = kind !== '' && line.trim().startsWith(kind) && !/\S/.test(source.slice(0, lineStart).replace(/^---\n[\s\S]*?\n---\n/, '').replace(/^\s*%%.*$/gm, ''));
-  const blank = line.trim() === '';
-  const indent = isHeader || (blank && kind !== '' && line === '') ? '    ' : /^\s*/.exec(line)![0];
-  const lines = body
-    .split('\n')
-    .map((l) => (l === '' ? l : indent + l))
-    .join('\n');
-  if (blank) return { from: lineStart, to: lineEnd, insert: lines, selection: { anchor: lineStart, head: lineStart + lines.length } };
+  const { header, body: bodyLinesOf } = bodyLines(source);
+  const indentLines = (indent: string) =>
+    body
+      .split('\n')
+      .map((l) => (l === '' ? l : indent + l))
+      .join('\n');
+  if (header && diagramKind(source) !== '' && lineStart <= header.from) {
+    const lines = indentLines(bodyLinesOf[0] ? /^\s*/.exec(bodyLinesOf[0].text)![0] || '    ' : '    ');
+    const insert = `\n${lines}`;
+    return { from: header.to, to: header.to, insert, selection: { anchor: header.to + 1, head: header.to + insert.length } };
+  }
+  const lines = indentLines(/^\s*/.exec(line)![0]);
+  if (line.trim() === '') return { from: lineStart, to: lineEnd, insert: lines, selection: { anchor: lineStart, head: lineStart + lines.length } };
   const insert = `\n${lines}`;
   return { from: lineEnd, to: lineEnd, insert, selection: { anchor: lineEnd + 1, head: lineEnd + insert.length } };
 }

@@ -73,7 +73,8 @@ function zoomAround(v: ViewBox, scale: number, px: number, py: number): ViewBox 
   return { scale, x: px - (px - v.x) * k, y: py - (py - v.y) * k };
 }
 
-export function usePanZoom(viewport: RefObject<HTMLDivElement | null>, canvas: RefObject<HTMLDivElement | null>) {
+/** onPinchStart: ピンチが始まったとき（呼び出し側のドラッグ、たとえば並べ替えを取り消すため） */
+export function usePanZoom(viewport: RefObject<HTMLDivElement | null>, canvas: RefObject<HTMLDivElement | null>, onPinchStart?: () => void) {
   const [view, setView] = useState<ViewBox>({ scale: 1, x: 0, y: 0 });
   const drag = useRef<{ x: number; y: number; vx: number; vy: number; moved: boolean } | null>(null);
 
@@ -94,6 +95,8 @@ export function usePanZoom(viewport: RefObject<HTMLDivElement | null>, canvas: R
   // 指が離れるまでのイベントは図ビューの他の処理（React のハンドラ）に渡さない
   const viewRef = useRef(view);
   viewRef.current = view;
+  const onPinchStartRef = useRef(onPinchStart);
+  onPinchStartRef.current = onPinchStart;
   useEffect(() => {
     const vp = viewport.current;
     if (!vp) return;
@@ -110,6 +113,7 @@ export function usePanZoom(viewport: RefObject<HTMLDivElement | null>, canvas: R
         const [[ia, a], [ib, b]] = [...touches.entries()];
         pinch = { start: viewRef.current, a0: a, b0: b, ids: [ia, ib] };
         drag.current = null;
+        onPinchStartRef.current?.();
         e.stopPropagation();
       }
     };

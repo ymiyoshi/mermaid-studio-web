@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import fixtures from './fixtures/rendered-svg.json';
 import { pluginFor } from '../src/plugins/registry';
-import { diffDiagrams, diffItems } from '../src/render/diagramDiff';
+import { diffDiagrams, diffItems, stableDataId } from '../src/render/diagramDiff';
 
 const fx = (fixtures as Record<string, { source: string; svg: string }>).flowchart;
 
@@ -62,5 +62,37 @@ describe('図で見る差分', () => {
   it('画面の選択の強調（mmd- のクラス）は差分にしない', () => {
     const selected = load((svg) => nodeEl(svg, 'A').classList.add('mmd-selected'));
     expect(diffDiagrams(load(), selected).changed).toBe(0);
+  });
+
+  it('描くたびに変わる ID（mmd-render-N）に左右されない（block 図の矢印など）', () => {
+    const all = fixtures as Record<string, { source: string; svg: string }>;
+    for (const [id, type] of [['block', 'block'], ['sequence-full', 'sequence'], ['state', 'stateDiagram'], ['mindmap', 'mindmap']] as const) {
+      const f = all[id];
+      const items = (svgText: string) => {
+        const host = document.createElement('div');
+        host.innerHTML = svgText;
+        return diffItems(pluginFor(type).mapTargets(host.querySelector('svg')!, f.source), f.source);
+      };
+      // 別の描画（id の番号が違う）として読む
+      const d = diffDiagrams(items(f.svg), items(f.svg.replace(/mmd-render-(\d+)/g, (_, n) => `mmd-render-${Number(n) + 40}`)));
+      expect([d.added, d.removed, d.changed], id).toEqual([0, 0, 0]);
+    }
+    expect(stableDataId('mmd-render-2-1-front-api')).toBe('front-api');
+    expect(stableDataId('L_A_B_0')).toBe('L_A_B_0');
+    for (const positional of ['i0', 'edge3', 'edge_0_1', '12']) expect(stableDataId(positional)).toBeNull();
+  });
+
+  it('番号で指す要素は並び順で突き合わせ、途中に 1 つ足しても後ろを「変えた」にしない', () => {
+    const msg = (label: string, i: number) => ({ key: `p:message#${i}`, group: 'message', sig: label, name: label });
+    const before = ['a', 'b', 'c'].map(msg);
+    const inserted = diffDiagrams(before, ['x', 'a', 'b', 'c'].map(msg));
+    expect([inserted.added, inserted.removed, inserted.changed]).toEqual([1, 0, 0]);
+    expect(inserted.right.get('p:message#0')).toBe('added');
+    // 1 つだけ書き換えたら「変えた」1
+    const edited = diffDiagrams(before, ['a', 'B', 'c'].map(msg));
+    expect([edited.added, edited.removed, edited.changed]).toEqual([0, 0, 1]);
+    expect(edited.left.get('p:message#1')).toBe('changed');
+    const removed = diffDiagrams(before, ['a', 'c'].map(msg));
+    expect([removed.added, removed.removed, removed.changed]).toEqual([0, 1, 0]);
   });
 });
