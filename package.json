@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit -p .",
     "test": "vitest run",
     "coverage": "vitest run --coverage",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "perf": "playwright test --config perf/playwright.config.ts"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",
