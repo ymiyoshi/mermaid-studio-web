@@ -10,9 +10,10 @@
   "lockFileMaintenance": { "enabled": false },
   "packageRules": [
     {
-      "description": "メジャー以外の更新は 1 本の PR にまとめ、CI（必須のチェック）が通ったら自動でマージする",
+      "description": "メジャー以外の更新は 1 本の PR にまとめ、CI（必須のチェック）が通ったら自動でマージする。groupName が日本語だとブランチ名が「renovate」だけになり、renovate/… のブランチを作れなくなるので、groupSlug を ASCII で付ける",
       "matchUpdateTypes": ["minor", "patch", "pin", "digest", "pinDigest"],
       "groupName": "メジャー以外の更新",
+      "groupSlug": "non-major",
       "automerge": true
     },
     {
