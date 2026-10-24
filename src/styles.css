@@ -1744,3 +1744,24 @@ button.tag {
   padding: 10px;
   font-size: 13px;
 }
+
+/* ---- テーマの編集 ---- */
+.color-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.color-field input[type='color'] {
+  width: 36px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+}
+
+.color-field input[type='color'].unset {
+  opacity: 0.35;
+}

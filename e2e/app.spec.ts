@@ -135,6 +135,20 @@ test('Ctrl を押しながら複数のノードを選び、形をまとめて変
   expect((await historyLabels(page)).at(-1)).toBe('3 個の要素を削除');
 });
 
+test('テーマのタブで、図の先頭の設定（テーマと色）を変える', async ({ page }) => {
+  const errors = await openApp(page);
+  await page.getByRole('tab', { name: 'テーマ' }).click();
+  await page.locator('.property-panel').getByRole('combobox', { name: 'テーマ' }).selectOption('base');
+  await expect.poll(() => editorText(page)).toContain('---\nconfig:\n  theme: base\n---\nflowchart TD');
+  await page.getByLabel('基本の塗り').fill('#ffcc00');
+  await expect.poll(() => editorText(page)).toContain('  themeVariables:\n    primaryColor: "#ffcc00"');
+  // 描いた図に色が付く
+  await expect.poll(() => page.locator('.diagram-canvas g.node rect').first().evaluate((el) => getComputedStyle(el).fill)).toBe('rgb(255, 204, 0)');
+  await page.getByTitle('設定を外す').click();
+  await expect.poll(() => editorText(page)).not.toContain('themeVariables');
+  expect(errors).toEqual([]);
+});
+
 test('右クリックのメニューから接続する', async ({ page }) => {
   await openApp(page);
   await node(page, '終了').click({ button: 'right' });

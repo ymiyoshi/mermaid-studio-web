@@ -2,6 +2,8 @@ import { memo, useMemo, useState } from 'react';
 import { applyDiagramChange, revealRange, showToast, useSession } from '../core/session';
 import { refKey, type DiagramPlugin, type ElementRef } from '../plugins/types';
 import { composeEach } from '../plugins/source';
+import { DIAGRAM_THEMES, THEME_COLORS, getFrontmatterValue, setFrontmatterValue } from '../plugins/frontmatter';
+import { withValue } from '../plugins/types';
 import { addRow, deleteRow, moveRow, setCell, tableRows, type TableDef, type TableRow } from '../plugins/table';
 import { FieldInput } from './FieldInput';
 import { t } from '../i18n';
@@ -48,7 +50,8 @@ export const PropertyPanel = memo(function PropertyPanel({ plugin, selected, sel
   const source = useMemo(() => text?.toString() ?? '', [text]);
   const tables = plugin.tables ?? [];
   // 表で編集する図種は、表のタブを最初に開く（補助の表しか無い図種はプロパティのタブを開く）
-  const [tab, setTab] = useState<string>(() => tables.find((x) => !x.secondary)?.id ?? 'props');
+  // 表もプロパティも無い図種（汎用フォールバック）は、テーマのタブを開く
+  const [tab, setTab] = useState<string>(() => tables.find((x) => !x.secondary)?.id ?? (plugin.inspect ? 'props' : 'theme'));
   const activeTable = tables.find((x) => x.id === tab) ?? null;
 
   const fields = useMemo(() => plugin.inspect?.(source, selected) ?? [], [plugin, source, selected]);
@@ -56,7 +59,7 @@ export const PropertyPanel = memo(function PropertyPanel({ plugin, selected, sel
   return (
     <div className="property-panel">
       <div className="panel-tabs" role="tablist">
-        <button role="tab" aria-selected={!activeTable} className={!activeTable ? 'active' : ''} onClick={() => setTab('props')}>
+        <button role="tab" aria-selected={tab === 'props'} className={tab === 'props' ? 'active' : ''} onClick={() => setTab('props')}>
           {t('panel.props')}
         </button>
         {tables.map((tb) => (
@@ -64,9 +67,14 @@ export const PropertyPanel = memo(function PropertyPanel({ plugin, selected, sel
             {tb.title}
           </button>
         ))}
+        <button role="tab" aria-selected={tab === 'theme'} className={tab === 'theme' ? 'active' : ''} onClick={() => setTab('theme')}>
+          {t('theme.tab')}
+        </button>
       </div>
       <div className="panel-body">
-        {activeTable ? (
+        {tab === 'theme' ? (
+          <ThemeFields source={source} editable={editable} />
+        ) : activeTable ? (
           <TableEditor table={activeTable} source={source} editable={editable} selectedFrom={selectedFrom} />
         ) : multi.length > 1 ? (
           <BulkFields plugin={plugin} source={source} refs={multi} editable={editable} />
@@ -138,6 +146,69 @@ function BulkFields({ plugin, source, refs, editable }: { plugin: DiagramPlugin;
         </div>
       )}
       <p className="muted small">{t('bulk.hint')}</p>
+    </>
+  );
+}
+
+const THEME_PATH = ['config', 'theme'];
+const colorPath = (key: string) => ['config', 'themeVariables', key];
+
+/** 色の入力欄に渡せる #rrggbb にする（#abc は #aabbcc に。読めない色は null） */
+function toHex(v: string): string | null {
+  const s = v.trim().toLowerCase();
+  if (/^#[0-9a-f]{6}$/.test(s)) return s;
+  if (/^#[0-9a-f]{3}$/.test(s)) return '#' + [...s.slice(1)].map((c) => c + c).join('');
+  return null;
+}
+
+/**
+ * テーマ: 図の先頭の設定（frontmatter の config.theme と config.themeVariables）を編集する。
+ * 書き換えるのは frontmatter の対象の行だけ。図の本文には触れない
+ */
+function ThemeFields({ source, editable }: { source: string; editable: boolean }) {
+  const theme = getFrontmatterValue(source, THEME_PATH);
+  const clear = async (path: string[], label: string) => {
+    const spec = setFrontmatterValue(source, path, '');
+    if (spec) await applyDiagramChange(spec, { label: t('theme.cleared', { name: label }) });
+  };
+  return (
+    <>
+      <div className="panel-heading">{t('theme.heading')}</div>
+      <div className="prop-grid">
+        <label className="prop-row">
+          <span>{t('theme.theme')}</span>
+          <FieldInput
+            field={{ type: 'select', label: t('theme.theme'), value: theme, options: [{ value: '', label: t('theme.appDefault') }, ...withValue(DIAGRAM_THEMES.map((x) => ({ value: x, label: x })), theme || 'default')] }}
+            disabled={!editable}
+            historyLabel={t('history.prop', { name: t('theme.theme') })}
+            build={(src, v) => setFrontmatterValue(src, THEME_PATH, v)}
+          />
+        </label>
+        {THEME_COLORS.map((c) => {
+          const raw = getFrontmatterValue(source, colorPath(c.key));
+          return (
+            <label key={c.key} className="prop-row">
+              <span>{c.label}</span>
+              <span className="color-field">
+                <FieldInput
+                  field={{ type: 'color', label: c.label, value: toHex(raw) ?? '#000000' }}
+                  className={raw ? '' : 'unset'}
+                  disabled={!editable}
+                  historyLabel={t('history.prop', { name: c.label })}
+                  build={(src, v) => setFrontmatterValue(src, colorPath(c.key), v)}
+                />
+                <code className="muted small">{raw || t('theme.unset')}</code>
+                {raw && (
+                  <button className="icon-btn" title={t('theme.clear')} disabled={!editable} onClick={() => void clear(colorPath(c.key), c.label)}>
+                    ✕
+                  </button>
+                )}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      <p className="muted small">{t('theme.hint')}</p>
     </>
   );
 }

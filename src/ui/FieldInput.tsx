@@ -9,7 +9,7 @@ import { t } from '../i18n';
 // 構文が壊れる値は反映を保留し、入力欄を赤くする（§6.2）。
 
 export interface FieldSpec {
-  type: 'text' | 'number' | 'select';
+  type: 'text' | 'number' | 'select' | 'color';
   value: string;
   options?: { value: string; label: string }[];
   placeholder?: string;
@@ -105,7 +105,7 @@ export function FieldInput({ field, disabled, build, historyLabel, className }: 
   return (
     <input
       {...common}
-      type={field.type === 'number' ? 'number' : 'text'}
+      type={field.type === 'number' ? 'number' : field.type === 'color' ? 'color' : 'text'}
       value={local}
       placeholder={field.placeholder}
       readOnly={field.readonly}

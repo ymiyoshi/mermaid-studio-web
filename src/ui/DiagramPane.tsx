@@ -397,11 +397,9 @@ export function DiagramPane() {
           </button>
         ))}
         <span className="spacer" />
-        {(plugin.inspect || plugin.tables) && (
-          <button className={`btn${panelOpen ? ' active' : ''}`} onClick={togglePanel} aria-pressed={panelOpen}>
-            {t('panel.toggle')}
-          </button>
-        )}
+        <button className={`btn${panelOpen ? ' active' : ''}`} onClick={togglePanel} aria-pressed={panelOpen}>
+          {t('panel.toggle')}
+        </button>
         <button className="icon-btn" title={t('toolbar.zoomOut')} onClick={() => zoomBy(1 / 1.25)}>
           −
         </button>
@@ -511,7 +509,7 @@ export function DiagramPane() {
           />
         )}
       </div>
-      {panelOpen && (plugin.inspect || plugin.tables) && (
+      {panelOpen && (
         <PropertyPanel key={plugin.type} plugin={plugin} selected={selected?.ref ?? null} selectedFrom={selected?.range?.from ?? null} multi={multi} editable={canEdit} />
       )}
       <div className="pane-footer">
