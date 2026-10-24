@@ -1848,17 +1848,16 @@ button.tag {
 }
 
 .presentation-stage {
+  position: relative;
   flex: 1;
   min-height: 0;
-  display: grid;
-  place-items: center;
-  padding: 3vh 4vw;
   cursor: pointer;
 }
 
+/* 縦に長い図も横に長い図も、画面に収める（高さを決めないと、図の高さに合わせて枠が伸びる） */
 .presentation-svg {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 3vh 4vw;
   display: grid;
   place-items: center;
 }
@@ -1871,6 +1870,7 @@ button.tag {
 }
 
 .presentation-error {
+  margin: 3vh 4vw;
   font-size: 14px;
   white-space: pre-wrap;
 }
