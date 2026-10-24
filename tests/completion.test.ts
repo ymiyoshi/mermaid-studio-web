@@ -60,4 +60,19 @@ describe('入力補完', () => {
     expect(completeAt('flowchart TB', 12, true)).toBeNull();
     expect(labels(completeAt('  flow', 6))).toContain('flowchart TD');
   });
+
+  // 共有リンクから長い 1 行を読み込ませて、補完で画面を固められないこと（正規表現が行の長さの二乗にならない）
+  it('とても長い行でもすぐに返る', () => {
+    for (const line of ['a'.repeat(200_000) + ' ', '@{'.repeat(100_000) + 'x', '@{ shape: ' + 'a'.repeat(200_000) + ' ']) {
+      const src = 'flowchart TD\n  ' + line;
+      const t0 = performance.now();
+      completeAt(src, src.length, true);
+      expect(performance.now() - t0).toBeLessThan(500);
+    }
+  });
+
+  it('語の始まりは、日本語の文字を含めて、絵文字などの手前で切る', () => {
+    const src = 'flowchart LR\n  A --> x😀図b';
+    expect(completeAt(src, src.length, true)?.from).toBe(src.length - 2);
+  });
 });

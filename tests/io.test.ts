@@ -4,6 +4,7 @@ import { openDB } from 'idb';
 import { findMermaidBlocks, replaceMermaidBlock, wrapAsMarkdown } from '../src/io/markdown';
 import { buildBackup, parseBackup, remapEntry, type BackupEntry } from '../src/io/backup';
 import { ChangeSet, Text } from '@codemirror/state';
+import { deflateSync, strToU8 } from 'fflate';
 import { HistoryTree } from '../src/core/history';
 import * as db from '../src/storage/db';
 import { markdownWithDiagram } from '../src/io/files';
@@ -164,6 +165,38 @@ describe('バックアップ', () => {
       reject([root, b, { ...c, children: [1] }]);
       reject([root, b, { ...c, snapshot: 5 }]);
     });
+  });
+
+  // 保存用の内部の形（圧縮したスナップショット snapshotZ）を持ち込ませない。持ち込めると、
+  // 長さの確認を通らないスナップショットが入ったり、開くときに展開に失敗したりする（§8.5）
+  it('バックアップの形に無い項目は、復元するときに捨てる', () => {
+    const e = entry('old', 'x');
+    const snapshotZ = [...deflateSync(strToU8('y'.repeat(1000)))];
+    const crafted = { ...e, history: [{ ...e.history[0], snapshotZ, extra: 1 }] } as unknown as BackupEntry;
+    const json = JSON.stringify(buildBackup([crafted]));
+    const r = remapEntry(parseBackup(json).docs[0], 'new');
+    expect(Object.keys(r.history[0]).sort()).toEqual(Object.keys(e.history[0]).concat('docId').filter((k, i, a) => a.indexOf(k) === i).sort());
+    expect(db.decodeNode(db.encodeNode(r.history[0])).snapshot).toBe('x');
+  });
+
+  it('名前付きチェックポイントの名前は残し、文字列でなければ拒否する', () => {
+    const e = entry('old', 'x');
+    const named = { ...e, history: [{ ...e.history[0], name: '版 1' }] };
+    expect(remapEntry(parseBackup(JSON.stringify(buildBackup([named]))).docs[0], 'new').history[0].name).toBe('版 1');
+    const bad = { ...e, history: [{ ...e.history[0], name: 5 }] };
+    expect(() => parseBackup(JSON.stringify(buildBackup([bad as unknown as BackupEntry])))).toThrow();
+  });
+
+  // 細工したバックアップで、復元の確認だけでタブが固まらないこと（親子の確認が子の数の二乗にならない）
+  it('ルートの直下に子がとても多い履歴でも、すぐに確かめ終わる', () => {
+    const e = entry('a', 'x');
+    const root = e.history[0];
+    const empty = ChangeSet.empty(1).toJSON();
+    const kids = Array.from({ length: 50_000 }, (_, i) => ({ ...root, id: `k${i}`, parentId: root.id, depth: 1, snapshot: null, forward: empty, inverse: empty }));
+    const json = JSON.stringify(buildBackup([{ ...e, history: [{ ...root, children: kids.map((k) => k.id) }, ...kids] }]));
+    const t0 = performance.now();
+    parseBackup(json);
+    expect(performance.now() - t0).toBeLessThan(1000);
   });
 
   it('タグの文字列以外は捨てる', () => {

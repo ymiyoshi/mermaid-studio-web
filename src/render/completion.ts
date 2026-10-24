@@ -96,6 +96,23 @@ function inFreeText(before: string): boolean {
   return quote || stack.length > 0;
 }
 
+const WORD_CHAR = /^[\p{L}\p{N}_-]$/u;
+
+/**
+ * 末尾の語（文字・数字・_・-）の始まりの位置。後ろから 1 文字ずつ見る
+ * （/[\p{L}\p{N}_-]*$/ は、語の文字が長く続いて末尾で切れる行で、行の長さの二乗になる）
+ */
+function wordStart(s: string): number {
+  let i = s.length;
+  while (i > 0) {
+    // サロゲートペア（絵文字や一部の漢字）は 2 つで 1 文字
+    const j = i >= 2 && /[\uDC00-\uDFFF]/.test(s[i - 1]) && /[\uD800-\uDBFF]/.test(s[i - 2]) ? i - 2 : i - 1;
+    if (!WORD_CHAR.test(s.slice(j, i))) break;
+    i = j;
+  }
+  return i;
+}
+
 /**
  * pos の位置の補完候補。補う語の始まり（from）と候補を返す。候補が無ければ null。
  * explicit は Ctrl+Space で呼んだとき（語を打っていなくても候補を出す）
@@ -104,12 +121,14 @@ export function completeAt(source: string, pos: number, explicit = false): { fro
   const lineStart = source.lastIndexOf('\n', pos - 1) + 1;
   const before = source.slice(lineStart, pos);
   if (isComment(before)) return null;
-  const word = /[\p{L}\p{N}_-]*$/u.exec(before)![0];
+  const word = before.slice(wordStart(before));
   const from = pos - word.length;
   if (!explicit && word.length === 0) return null;
 
-  // @{ shape: の後は形の名前
-  if (/@\{[^}]*\bshape:\s*[\w-]*$/.test(before)) {
+  // @{ shape: の後は形の名前。最後の @{ から先だけを見る（行全体に /@\{[^}]*…$/ を当てると、
+  // 閉じていない @{ が多い行で行の長さの二乗になり、共有リンクの長い行で画面が固まる）
+  const meta = before.lastIndexOf('@{');
+  if (meta >= 0 && !before.includes('}', meta) && /\bshape:\s*[\w-]*$/.test(before.slice(meta))) {
     return { from, options: META_SHAPES.map((s) => ({ label: s.name, detail: s.label, type: 'enum' as const })) };
   }
 
