@@ -49,6 +49,7 @@ function validNodeShape(n: unknown): n is HistoryNode {
     isSel(n.selBefore) &&
     isSel(n.selAfter) &&
     isStrOrNull(n.snapshot) &&
+    (n.name === undefined || typeof n.name === 'string') &&
     'forward' in n &&
     'inverse' in n
   );
@@ -69,11 +70,14 @@ function validHistory(history: unknown[]): history is HistoryNode[] {
   }
   const roots = history.filter((n) => n.parentId === null);
   if (roots.length !== 1 || roots[0].snapshot === null) return false;
+  // 子の確認は Set で引く（配列の includes だと、子の多い細工された履歴で子の数の二乗になる）
+  const childSets = new Map(history.map((n) => [n.id, new Set(n.children)]));
   for (const n of history) {
-    if (n.parentId !== null && !byId.get(n.parentId)?.children.includes(n.id)) return false;
-    if (new Set(n.children).size !== n.children.length) return false;
+    const children = childSets.get(n.id)!;
+    if (n.parentId !== null && !childSets.get(n.parentId)?.has(n.id)) return false;
+    if (children.size !== n.children.length) return false;
     if (n.children.some((c) => byId.get(c)?.parentId !== n.id)) return false;
-    if (n.lastChild !== null && !n.children.includes(n.lastChild)) return false;
+    if (n.lastChild !== null && !children.has(n.lastChild)) return false;
   }
   // ルートから幅優先にたどり、各ノードの文書の長さを求めながら変更を確かめる
   const lengths = new Map<string, number>([[roots[0].id, roots[0].snapshot!.length]]);
@@ -123,11 +127,37 @@ export function parseBackup(json: string): BackupFile {
 }
 
 /**
+ * バックアップの形にある項目だけで、ノードを作り直す。保存用の内部の形（圧縮した snapshotZ）などを
+ * 持ち込ませないため。持ち込めると、長さを確かめていないスナップショットが開くときに使われてしまう（§8.5）
+ */
+function pickNode(n: HistoryNode, docId: string): HistoryNode {
+  const node: HistoryNode = {
+    id: n.id,
+    docId,
+    parentId: n.parentId,
+    children: n.children,
+    lastChild: n.lastChild,
+    depth: n.depth,
+    forward: n.forward,
+    inverse: n.inverse,
+    label: n.label,
+    origin: n.origin,
+    groupKey: n.groupKey,
+    selBefore: { anchor: n.selBefore.anchor, head: n.selBefore.head },
+    selAfter: { anchor: n.selAfter.anchor, head: n.selAfter.head },
+    ts: n.ts,
+    snapshot: n.snapshot,
+  };
+  if (n.name !== undefined) node.name = n.name;
+  return node;
+}
+
+/**
  * 復元する図に新しい docId を振る（既存の図を上書きしないため）。
  * 履歴ノードの id は docId と組で一意なのでそのまま使える。
  */
 export function remapEntry(entry: BackupEntry, newId: string): BackupEntry {
-  const history = entry.history.map((n) => ({ ...n, docId: newId }));
+  const history = entry.history.map((n) => pickNode(n, newId));
   const root = history.find((n) => n.parentId === null);
   const headOk = history.some((n) => n.id === entry.doc.headId);
   return {
