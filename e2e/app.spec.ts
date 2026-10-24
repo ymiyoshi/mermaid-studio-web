@@ -85,6 +85,34 @@ test('プロパティで形を変えた直後でも、Delete で消せる', asyn
   await expect(node(page, 'スキップ')).toHaveCount(0);
 });
 
+test('履歴の版と今の版を図で比べる（変えた・足した要素を光らせる）', async ({ page }) => {
+  const errors = await openApp(page);
+  await node(page, '開始').dblclick();
+  await page.locator('.inline-label-editor input').fill('スタート');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await page.locator('.inline-label-editor input').fill('準備');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => editorText(page)).toContain('N1[準備]');
+
+  const first = page.locator('.history-row').first();
+  await first.hover();
+  await first.getByTitle('この版と今の版を図で比べる').click();
+  const view = page.getByRole('dialog', { name: '版を比べる' });
+  // ラベルを変えたノード A、足したノード N1 とエッジ A→N1
+  await expect(view.locator('.compare-summary')).toContainText('足した 2');
+  await expect(view.locator('.compare-summary')).toContainText('消した 0');
+  await expect(view.locator('.compare-summary')).toContainText('変えた 1');
+  await expect(view.locator('.compare-side').first().locator('.mmd-diff-chg')).toHaveCount(1);
+  await expect(view.locator('.compare-side').last().locator('.mmd-diff-add')).toHaveCount(2);
+  // 左右を入れ替えると、足した要素は「消した」になる
+  await view.getByTitle('左右を入れ替える').click();
+  await expect(view.locator('.compare-summary')).toContainText('消した 2');
+  await page.keyboard.press('Escape');
+  await expect(view).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test('右クリックのメニューから接続する', async ({ page }) => {
   await openApp(page);
   await node(page, '終了').click({ button: 'right' });

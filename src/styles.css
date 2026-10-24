@@ -1520,3 +1520,136 @@ button.tag {
   flex: 1 1 auto;
   min-width: 60px;
 }
+
+/* ---- 版を比べる（図で見る差分） ---- */
+.diff-chg {
+  color: var(--warn);
+  font-weight: 700;
+}
+
+.modal.compare-view {
+  width: min(1400px, 100%);
+  height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.compare-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.compare-head h2 {
+  margin: 0 8px 0 0;
+}
+
+.compare-pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  min-width: 0;
+}
+
+.compare-pick select {
+  max-width: 320px;
+}
+
+.compare-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.compare-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 760px) {
+  .compare-body {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+}
+
+.compare-side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--canvas);
+  overflow: hidden;
+}
+
+.compare-side-title {
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.compare-canvas {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+  display: grid;
+  place-items: center;
+}
+
+.compare-canvas svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.compare-text {
+  margin: 0;
+  padding: 10px;
+  font-size: 12px;
+  overflow: auto;
+}
+
+/* 差分の色。図の要素そのもの（ノードの g・エッジの path）に付く */
+.compare-canvas .mmd-diff-add {
+  filter: drop-shadow(0 0 3px #1f9d55) drop-shadow(0 0 2px #1f9d55);
+}
+
+.compare-canvas .mmd-diff-del {
+  filter: drop-shadow(0 0 3px #d93025) drop-shadow(0 0 2px #d93025);
+}
+
+.compare-canvas .mmd-diff-chg {
+  filter: drop-shadow(0 0 3px #e6a700) drop-shadow(0 0 2px #e6a700);
+}
+
+.compare-canvas path.mmd-diff-add {
+  stroke: #1f9d55 !important;
+  stroke-width: 3px !important;
+}
+
+.compare-canvas path.mmd-diff-del {
+  stroke: #d93025 !important;
+  stroke-width: 3px !important;
+}
+
+.compare-canvas path.mmd-diff-chg {
+  stroke: #e6a700 !important;
+  stroke-width: 3px !important;
+}
+
+/* 対応付けが足すクリックの当たり判定（比べる画面では使わない） */
+.compare-canvas .mmd-hit {
+  display: none;
+}

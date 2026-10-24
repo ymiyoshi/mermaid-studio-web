@@ -3,6 +3,7 @@ import { duplicateFromHistory, jumpTo, nameCheckpoint, pruneBranches, showToast,
 import type { HistoryNode, HistoryTree, Origin } from '../core/history';
 import { renderSvg } from '../render/mermaid';
 import { layoutHistory } from './historyLayout';
+import { CompareView } from './CompareView';
 import { t } from '../i18n';
 
 const ROW_H = 30;
@@ -101,6 +102,7 @@ export function HistoryPane() {
   const [naming, setNaming] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [confirmPrune, setConfirmPrune] = useState(false);
+  const [compare, setCompare] = useState<{ before: string; after: string } | null>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   // 長い履歴でも入力のたびに全行を描き直さないよう、見えている行だけを描く
@@ -145,6 +147,7 @@ export function HistoryPane() {
   useEffect(() => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     setPreview(null);
+    setCompare(null);
   }, [docId]);
 
   if (!current || !layout) return <section className="pane history-pane" />;
@@ -295,6 +298,20 @@ export function HistoryPane() {
                 </button>
                 <button
                   className="history-dup"
+                  title={t('compare.withHead')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    leave();
+                    // 今の版を選んだときは、ひとつ前の版と比べる
+                    const isHead = r.node.id === current.tree.headId;
+                    const before = isHead ? (r.node.parentId ?? r.node.id) : r.node.id;
+                    setCompare({ before, after: current.tree.headId });
+                  }}
+                >
+                  ⇄
+                </button>
+                <button
+                  className="history-dup"
                   title={t('history.duplicate')}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -319,6 +336,9 @@ export function HistoryPane() {
       </div>
       {/* 切り替えた直後の描画では、まだ前の図の版を指していることがある。今の図に無い版は出さない */}
       {preview && current.tree.nodes.has(preview.node.id) && <HistoryPreview tree={current.tree} preview={preview} />}
+      {compare && current.tree.nodes.has(compare.before) && current.tree.nodes.has(compare.after) && (
+        <CompareView tree={current.tree} initialBefore={compare.before} initialAfter={compare.after} onClose={() => setCompare(null)} />
+      )}
     </section>
   );
 }
