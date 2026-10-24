@@ -2,6 +2,8 @@
 
 ブラウザだけで動く Mermaid エディタ。設計は [docs/design.md](docs/design.md) を参照。
 
+**公開版: <https://ymiyoshi.github.io/mermaid-studio-web/>**（インストールせずにブラウザで使える。PWA としてインストールすると、オフラインでも動き、`.mmd` / `.mermaid` を開ける）
+
 ## 使い方
 
 ```sh
@@ -17,7 +19,7 @@ npm run preview  # 本番ビルドの確認
 
 ## 公開（GitHub Pages）
 
-`main` に push すると、`.github/workflows/deploy.yml` がテストを通したうえで `https://<ユーザー名>.github.io/<リポジトリ名>/` に公開する。初回だけ、リポジトリの Settings → Pages で Source を「GitHub Actions」にする。
+`main` に push すると、`.github/workflows/deploy.yml` がテストを通したうえで `https://<ユーザー名>.github.io/<リポジトリ名>/`（このリポジトリでは <https://ymiyoshi.github.io/mermaid-studio-web/>）に公開する。初回だけ、リポジトリの Settings → Pages で Source を「GitHub Actions」にする。
 
 サブパスに置くので、ビルド時に `--base "/<リポジトリ名>/"` を渡している。アプリの中で `public/` のファイルを参照するときは、`/favicon.svg` のような絶対パスではなく `import.meta.env.BASE_URL` を前に付ける。
 
