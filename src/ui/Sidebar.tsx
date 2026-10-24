@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   createFromTemplate,
   duplicateDoc,
@@ -9,23 +9,52 @@ import {
   useSession,
 } from '../core/session';
 import { TEMPLATES } from '../core/templates';
+import { thumbSrc, useThumbs } from '../render/thumbs';
+import { getSetting, putSetting, type DocRecord } from '../storage/db';
 import { t } from '../i18n';
 
 const dateFmt = new Intl.DateTimeFormat('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
+type SortKey = 'updated' | 'created' | 'title';
+
+const SORTS: Record<SortKey, (a: DocRecord, b: DocRecord) => number> = {
+  updated: (a, b) => b.updatedAt - a.updatedAt,
+  created: (a, b) => b.createdAt - a.createdAt,
+  title: (a, b) => a.title.localeCompare(b.title, 'ja'),
+};
+
 export function Sidebar() {
   const docs = useSession((s) => s.docs);
   const currentId = useSession((s) => s.current?.id);
+  const thumbs = useThumbs((s) => s.byDoc);
   const [query, setQuery] = useState('');
+  const [tag, setTag] = useState<string | null>(null);
+  const [sort, setSort] = useState<SortKey>('updated');
   const [showTrash, setShowTrash] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
+  useEffect(() => {
+    void getSetting<SortKey>('docSort').then((v) => v && SORTS[v] && setSort(v));
+  }, []);
+
+  // 「#タグ」で検索するとタグで絞り込む
   const q = query.trim().toLowerCase();
-  const visible = docs.filter(
-    (d) =>
-      (showTrash ? d.deletedAt !== null : d.deletedAt === null) &&
-      (q === '' || d.title.toLowerCase().includes(q) || d.text.toLowerCase().includes(q)),
+  const hashTag = q.startsWith('#') ? q.slice(1) : null;
+  const visible = useMemo(
+    () =>
+      docs
+        .filter(
+          (d) =>
+            (showTrash ? d.deletedAt !== null : d.deletedAt === null) &&
+            (!tag || d.tags.includes(tag)) &&
+            (hashTag !== null
+              ? d.tags.some((x) => x.toLowerCase().includes(hashTag))
+              : q === '' || d.title.toLowerCase().includes(q) || d.text.toLowerCase().includes(q)),
+        )
+        .sort(SORTS[sort]),
+    [docs, showTrash, tag, hashTag, q, sort],
   );
+  const allTags = useMemo(() => [...new Set(docs.filter((d) => d.deletedAt === null).flatMap((d) => d.tags))].sort(), [docs]);
 
   return (
     <aside className="pane sidebar">
@@ -65,7 +94,29 @@ export function Sidebar() {
           onChange={(e) => setQuery(e.target.value)}
           aria-label={t('doc.search')}
         />
+        <select
+          aria-label={t('doc.sort')}
+          value={sort}
+          onChange={(e) => {
+            const v = e.target.value as SortKey;
+            setSort(v);
+            void putSetting('docSort', v);
+          }}
+        >
+          <option value="updated">{t('doc.sortUpdated')}</option>
+          <option value="created">{t('doc.sortCreated')}</option>
+          <option value="title">{t('doc.sortTitle')}</option>
+        </select>
       </div>
+      {allTags.length > 0 && !showTrash && (
+        <div className="tag-filter">
+          {allTags.map((x) => (
+            <button key={x} className={`tag${tag === x ? ' active' : ''}`} onClick={() => setTag(tag === x ? null : x)}>
+              #{x}
+            </button>
+          ))}
+        </div>
+      )}
       <ul className="doc-list">
         {visible.length === 0 && (
           <li className="doc-empty">{showTrash && q === '' ? t('doc.emptyTrash') : t('doc.noMatch')}</li>
@@ -73,9 +124,23 @@ export function Sidebar() {
         {visible.map((d) => (
           <li key={d.id} className={`doc-item${d.id === currentId ? ' active' : ''}`}>
             <button className="doc-open" onClick={() => !showTrash && void openDoc(d.id)} disabled={showTrash}>
-              <span className="doc-title">{d.title || t('doc.untitled')}</span>
-              <span className="doc-meta">
-                {firstLine(d.text)} ・ {dateFmt.format(d.updatedAt)}
+              <span className="doc-thumb" aria-hidden>
+                {thumbs[d.id] ? <img alt="" src={thumbSrc(thumbs[d.id])} loading="lazy" /> : <span>{firstLine(d.text).slice(0, 2)}</span>}
+              </span>
+              <span className="doc-text">
+                <span className="doc-title">{d.title || t('doc.untitled')}</span>
+                <span className="doc-meta">
+                  {firstLine(d.text)} ・ {dateFmt.format(d.updatedAt)}
+                </span>
+                {d.tags.length > 0 && (
+                  <span className="doc-tags">
+                    {d.tags.map((x) => (
+                      <span key={x} className="tag small-tag">
+                        #{x}
+                      </span>
+                    ))}
+                  </span>
+                )}
               </span>
             </button>
             <span className="doc-actions">

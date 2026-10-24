@@ -29,6 +29,8 @@ export interface HistoryNode {
   ts: number;
   /** SNAPSHOT_INTERVAL ステップごとの全文。ルートは常に持つ */
   snapshot: string | null;
+  /** 名前付きチェックポイント（§8.4）。付いていれば履歴ビューで折りたたまない */
+  name?: string;
 }
 
 export interface CommitMeta {
@@ -250,6 +252,43 @@ export class HistoryTree {
       for (const n of downs) changes = changes.compose(this.sets(n).fwd);
     }
     return { changes, selection: target.selAfter, nodeId: targetId };
+  }
+
+  /** 名前付きチェックポイントにする（空文字なら名前を外す） */
+  setName(id: string, name: string) {
+    const n = this.get(id);
+    if (name.trim()) n.name = name.trim();
+    else delete n.name;
+    this.touch(n);
+  }
+
+  /**
+   * 今の版（head）に至らない分岐を消す（§8.5 古い分岐の整理）。
+   * 残すのは、ルートから head までの道と、head の子孫（redo で進める先）。消したノードの id を返す
+   */
+  pruneBranches(): string[] {
+    const keep = new Set(this.pathFromRoot(this.headId).map((n) => n.id));
+    const stack = [this.headId];
+    while (stack.length) {
+      const n = this.get(stack.pop()!);
+      keep.add(n.id);
+      stack.push(...n.children);
+    }
+    const removed = [...this.nodes.keys()].filter((id) => !keep.has(id));
+    for (const id of removed) {
+      this.nodes.delete(id);
+      this.cache.delete(id);
+      this.dirty.delete(id);
+    }
+    for (const n of this.nodes.values()) {
+      const kids = n.children.filter((c) => keep.has(c));
+      if (kids.length !== n.children.length) {
+        n.children = kids;
+        if (n.lastChild && !keep.has(n.lastChild)) n.lastChild = kids.at(-1) ?? null;
+        this.touch(n);
+      }
+    }
+    return removed;
   }
 
   takeDirty(): HistoryNode[] {

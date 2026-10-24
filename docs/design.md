@@ -346,7 +346,12 @@ interface HistoryTree { rootId: string; headId: string; nodes: Map<string, Histo
   - フォーカスが戻ったときに `lastModified` を確認し、**アプリの外で変更されていたら**「再読み込み / 差分を確認 / 無視」を尋ねる。再読み込みは履歴上 1 ステップ（origin: `file-load`）になる。
 - リロード後に保存済みのファイルハンドルを使うときは `queryPermission` / `requestPermission` が必要。要求はユーザー操作（クリック）の中で行う。
 - **Firefox / Safari**: `<input type="file">` で読み込み、ダウンロードで保存するフォールバック。
-- ドラッグ＆ドロップでの読み込みにも対応する。
+- ドラッグ＆ドロップでの読み込みにも対応する（バックアップの .json をドロップすると復元）。
+- 外部で変更されたとき、図に未保存の変更が無ければ黙って読み込み直す。未保存の変更があればバナーで「読み込む / 上書き保存 / 無視」を選んでもらう（どちらを選んでも今の内容は履歴に残る）。
+
+### 9.3.1 バックアップ（実装時に追加）
+- 図はこのブラウザの IndexedDB にしか無いため、全図を履歴つきで JSON に書き出し、復元できるようにする。
+- 復元した図には新しい docId を振る（既存の図を上書きしない）。ファイルとの結び付きは含めない。
 
 ### 9.4 URL 共有
 - テキストを `fflate` の deflate で圧縮し、base64url にして **`#` 以降（fragment）** に入れる。fragment はサーバーに送られない。
@@ -358,7 +363,7 @@ interface HistoryTree { rootId: string; headId: string; nodes: Map<string, Histo
 ### 9.5 画像エクスポート
 - **SVG**: 描画済みの SVG を整えて出力する（オーバーレイ層は除く。フォントは埋め込みと参照から選ぶ）。
 - **PNG**: SVG → `<img>` → `<canvas>` → `toBlob`。
-  - HTML ラベル（foreignObject）を含む SVG は canvas に描くと汚染されたり崩れたりするため、**出力時は `htmlLabels: false` で描画し直す**。
+  - HTML ラベル（foreignObject）を含む SVG は canvas に描くと汚染されたり崩れたりするため、**出力時は `htmlLabels: false` で描画し直す**。それでも foreignObject を使う図種（journey など）は、残った foreignObject を SVG の text に置き換える。
   - 倍率（1x/2x/3x）と背景（透明/白/テーマ色）を選べる。
   - Web フォントは data URI として埋め込んでから描く。
 - **クリップボード**: `navigator.clipboard.write` で PNG と SVG テキストをコピーする。
@@ -412,6 +417,15 @@ interface HistoryTree { rootId: string; headId: string; nodes: Map<string, Histo
 | 4 残りの全図種 | §7.3 の Phase 4 の図種、ローカルファイル、URL 共有、PWA | 同上。Firefox/Safari のフォールバックが動く |
 
 ※ ローカルファイルと URL 共有は、Phase 1 と並行して前倒しできる（プラグインに依存しないため）。
+
+### 12.1 進捗（2026-10-24 時点）
+
+Phase 0〜4 をすべて実装した。実装の中で決めたこと:
+
+- データ系の図種（pie・gantt など）の「視覚編集」は、行を表として編集するタブ（プロパティパネル）にした。セルの変更は値の範囲だけを書き換える。
+- エッジ・メッセージ・関係は、SVG の data-id / data-from / data-to にある端点でソースに対応付ける（描画の順番に頼らない）。state 図の遷移だけは端点の情報が無いため、順番で対応付ける。
+- `block` 図は汎用フォールバック（ラベル編集のみ）。`zenuml` は対象外。
+- 未着手: 英語の UI、Playwright の E2E テスト、§11 の性能目標の計測。
 
 ---
 

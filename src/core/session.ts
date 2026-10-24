@@ -19,6 +19,8 @@ export interface CurrentDoc {
   readOnly: boolean;
   createdAt: number;
   tags: string[];
+  /** 結び付いたローカルファイル（§9.3） */
+  file: store.FileBinding | null;
 }
 
 export interface StorageInfo {
@@ -97,7 +99,7 @@ export interface ApplyMeta {
   ts?: number;
 }
 
-const normalize = (s: string) => s.replace(/\r\n?/g, '\n');
+export const normalize = (s: string) => s.replace(/\r\n?/g, '\n');
 const toText = (s: string) => Text.of(normalize(s).split('\n'));
 
 function mapSel(sel: Sel, changes: ChangeSet): Sel {
@@ -191,6 +193,37 @@ export function jumpTo(nodeId: string) {
   moveHistory(cur.tree.jumpTo(nodeId, cur.text));
 }
 
+/** 図のタグを変える（§9.2） */
+export function setTags(tags: string[]) {
+  const cur = get().current;
+  if (!cur || cur.readOnly) return;
+  const clean = [...new Set(tags.map((x) => x.trim().replace(/^#/, '')).filter(Boolean))];
+  set({ current: { ...cur, tags: clean } });
+  schedulePersist();
+}
+
+/** 履歴のノードを名前付きチェックポイントにする */
+export function nameCheckpoint(nodeId: string, name: string) {
+  const cur = get().current;
+  if (!cur || cur.readOnly) return;
+  cur.tree.setName(nodeId, name);
+  set({ rev: get().rev + 1 });
+  schedulePersist();
+}
+
+/** 今の版に至らない分岐を消す。消したステップの数を返す */
+export async function pruneBranches(): Promise<number> {
+  const cur = get().current;
+  if (!cur || cur.readOnly) return 0;
+  await flush();
+  const removed = cur.tree.pruneBranches();
+  if (removed.length === 0) return 0;
+  await store.deleteHistoryNodes(cur.id, removed);
+  set({ rev: get().rev + 1 });
+  schedulePersist();
+  return removed.length;
+}
+
 export function setSelection(selection: Sel) {
   const s = get().selection;
   if (s.anchor !== selection.anchor || s.head !== selection.head) set({ selection });
@@ -256,7 +289,7 @@ let currentLock: DocLock | null = null;
 async function loadDoc(id: string, readOnly: boolean): Promise<CurrentDoc | null> {
   const rec = await store.getDoc(id);
   if (!rec) return null;
-  const nodes = await store.loadHistory(id);
+  const [nodes, file] = await Promise.all([store.loadHistory(id), store.getFileBinding(id)]);
   const tree =
     nodes.length > 0 ? HistoryTree.load(id, nodes, rec.headId) : HistoryTree.create(id, rec.text, rec.createdAt);
   return {
@@ -267,6 +300,7 @@ async function loadDoc(id: string, readOnly: boolean): Promise<CurrentDoc | null
     readOnly,
     createdAt: rec.createdAt,
     tags: rec.tags,
+    file: file ?? null,
   };
 }
 
@@ -305,11 +339,11 @@ async function reloadCurrent(readOnly: boolean) {
   emitReset(cur, selection);
 }
 
-export async function createDoc(text: string, title: string): Promise<string> {
+export async function createDoc(text: string, title: string, label = t('history.create')): Promise<string> {
   const id = crypto.randomUUID();
   const now = Date.now();
   const normalized = normalize(text);
-  const tree = HistoryTree.create(id, normalized, now, t('history.create'));
+  const tree = HistoryTree.create(id, normalized, now, label);
   const rec: store.DocRecord = {
     id,
     title,
@@ -343,6 +377,19 @@ export async function duplicateFromHistory(nodeId: string) {
   const cur = get().current;
   if (!cur) return;
   await createDoc(cur.tree.textAt(nodeId), cur.title + t('doc.copySuffix'));
+}
+
+/** 現在の図にローカルファイルを結び付ける（保存・読み込みの後に呼ぶ） */
+export async function setFileBinding(file: store.FileBinding) {
+  await store.putFileBinding(file);
+  const cur = get().current;
+  if (cur && cur.id === file.docId) set({ current: { ...cur, file } });
+}
+
+/** IndexedDB に直接書き込んだ後（バックアップの復元など）に一覧を読み直す */
+export async function reloadDocList() {
+  set({ docs: await store.listDocs() });
+  broadcast({ type: 'docs-changed' });
 }
 
 export async function renameCurrent(title: string) {

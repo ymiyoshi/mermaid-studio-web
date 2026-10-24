@@ -8,9 +8,9 @@ import { findParticipantLabel, sequencePlugin } from '../src/plugins/sequence';
 import { uniqueId } from '../src/plugins/source';
 import type { DiagramPlugin } from '../src/plugins/types';
 
-function run(plugin: DiagramPlugin, actionId: string, source: string, args: string[] = []) {
+function run(plugin: DiagramPlugin, actionId: string, source: string, args: string[] = [], kind = 'node') {
   const action = plugin.actions!.find((a) => a.id === actionId)!;
-  const res = action.run(source, args)!;
+  const res = action.run(source, args.map((id) => ({ kind, id })))!;
   const after = ChangeSet.of(res.change, source.length).apply(Text.of(source.split('\n'))).toString();
   return { ...res, after };
 }
@@ -58,7 +58,7 @@ describe('flowchart: 追加と接続', () => {
   it('ノードを追加すると、既存の行を変えずに 1 行増える', async () => {
     const r = run(flowchartPlugin, 'add-node', FLOW);
     expect(r.after).toBe(FLOW.replace(/end\n$/, 'end\n    N1[新しいノード]\n'));
-    expect(r.focus).toBe('N1');
+    expect(r.focus).toEqual({ kind: 'node', id: 'N1' });
     expect(r.after.slice(r.selAfter!.anchor, r.selAfter!.head)).toBe('新しいノード');
     await expect(mermaid.parse(r.after)).resolves.toBeTruthy();
   });
@@ -101,12 +101,12 @@ describe('sequence: 追加', () => {
   it('参加者は最後の宣言の後ろに追加する', async () => {
     const r = run(sequencePlugin, 'add-participant', SEQ);
     expect(r.after).toContain('    participant S\n    participant P1 as 新しい参加者\n    U->>S');
-    expect(r.focus).toBe('P1');
+    expect(r.focus).toEqual({ kind: 'participant', id: 'P1' });
     await expect(mermaid.parse(r.after)).resolves.toBeTruthy();
   });
 
   it('メッセージは末尾（ブロックの外）に追加し、本文を選択する', async () => {
-    const r = run(sequencePlugin, 'add-message', SEQ, ['S', 'U']);
+    const r = run(sequencePlugin, 'add-message', SEQ, ['S', 'U'], 'participant');
     expect(r.after).toBe(SEQ + '    S->>U: メッセージ\n');
     expect(r.after.slice(r.selAfter!.anchor, r.selAfter!.head)).toBe('メッセージ');
     expect(r.focusAt).toBe(r.selAfter!.anchor);

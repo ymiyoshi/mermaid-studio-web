@@ -45,7 +45,7 @@ export function layoutHistory(
   }
 
   const foldable = (n: HistoryNode) => {
-    if (n.parentId === null || n.id === headId || n.children.length !== 1) return false;
+    if (n.parentId === null || n.id === headId || n.children.length !== 1 || n.name) return false;
     return nodes.get(n.parentId)?.children.length === 1;
   };
 

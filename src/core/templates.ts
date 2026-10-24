@@ -167,6 +167,65 @@ export const TEMPLATES: Template[] = [
 `,
   },
   {
+    id: 'kanban',
+    name: 'カンバン',
+    text: `kanban
+  todo[やること]
+    t1[設計書を書く]
+    t2[図を描く]
+  doing[作業中]
+    t3[実装]
+  done[完了]
+    t4[調査]
+`,
+  },
+  {
+    id: 'architecture',
+    name: 'アーキテクチャ図',
+    text: `architecture-beta
+    group api(cloud)[API]
+    service db(database)[データベース] in api
+    service server(server)[サーバー] in api
+    db:L -- R:server
+`,
+  },
+  {
+    id: 'c4',
+    name: 'C4 図',
+    text: `C4Context
+    title システム構成
+    Person(user, "利用者")
+    System(sys, "Mermaid Studio", "ブラウザだけで動く")
+    Rel(user, sys, "図を描く")
+`,
+  },
+  {
+    id: 'sankey',
+    name: 'サンキー図',
+    text: `sankey-beta
+Visit,New,40
+Visit,Template,25
+New,Saved,30
+Template,Saved,20
+`,
+  },
+  {
+    id: 'requirement',
+    name: '要求図',
+    text: `requirementDiagram
+    requirement undo_history {
+    id: 1
+    text: "無制限に undo できる"
+    risk: medium
+    verifymethod: test
+    }
+    element history_tree {
+    type: module
+    }
+    history_tree - satisfies -> undo_history
+`,
+  },
+  {
     id: 'xychart',
     name: 'XY チャート',
     text: `xychart

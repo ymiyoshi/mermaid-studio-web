@@ -16,15 +16,21 @@ export type ValidateResult = { ok: true; diagramType: string | null } | { ok: fa
 
 let currentTheme: Theme | null = null;
 
+function baseConfig(theme: Theme, htmlLabels: boolean) {
+  return {
+    startOnLoad: false,
+    securityLevel: 'strict' as const,
+    theme,
+    suppressErrorRendering: true,
+    htmlLabels,
+    flowchart: { htmlLabels },
+  };
+}
+
 export function configureMermaid(theme: Theme) {
   if (theme === currentTheme) return;
   currentTheme = theme;
-  mermaid.initialize({
-    startOnLoad: false,
-    securityLevel: 'strict',
-    theme,
-    suppressErrorRendering: true,
-  });
+  mermaid.initialize(baseConfig(theme, true));
 }
 
 function lineFromOffset(text: string, offset: number): number {
@@ -79,15 +85,26 @@ let renderSeq = 0;
 
 export type RenderResult = { ok: true; svg: string } | { ok: false; error: ParseError };
 
-export function renderSvg(text: string): Promise<RenderResult> {
+export interface RenderOptions {
+  /**
+   * false にすると、ラベルを HTML（foreignObject）ではなく SVG の text で描く。
+   * foreignObject を含む SVG は canvas に描くと崩れたり汚染されたりするので、PNG 出力で使う（§9.5）
+   */
+  htmlLabels?: boolean;
+}
+
+export function renderSvg(text: string, opts: RenderOptions = {}): Promise<RenderResult> {
   const id = `mmd-render-${++renderSeq}`;
+  const override = opts.htmlLabels === false && currentTheme !== null;
   const job = queue.then(async (): Promise<RenderResult> => {
+    if (override) mermaid.initialize(baseConfig(currentTheme!, false));
     try {
       const { svg } = await mermaid.render(id, text);
       return { ok: true, svg };
     } catch (e) {
       return { ok: false, error: toParseError(e, text) };
     } finally {
+      if (override) mermaid.initialize(baseConfig(currentTheme!, true));
       // 失敗時に mermaid が残す一時要素を片付ける
       document.getElementById(id)?.remove();
       document.getElementById(`d${id}`)?.remove();

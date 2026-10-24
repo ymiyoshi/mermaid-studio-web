@@ -63,3 +63,24 @@ describe('IndexedDB への保存', () => {
     expect(await db.getDoc('recent')).toBeDefined();
   });
 });
+
+describe('スナップショットの圧縮', () => {
+  it('長いスナップショットは圧縮して保存し、読むときに戻す', async () => {
+    const big = 'flowchart LR\n' + '  A --> B\n'.repeat(500);
+    const tree = HistoryTree.create('big', big, 0);
+    const nodes = tree.takeDirty();
+    const stored = db.encodeNode(nodes[0]) as ReturnType<typeof db.encodeNode> & { snapshotZ?: Uint8Array };
+    expect(stored.snapshot).toBeNull();
+    expect(stored.snapshotZ!.length).toBeLessThan(big.length / 10);
+    await db.saveDocAndNodes(record(tree, big), nodes);
+    const loaded = await db.loadHistory('big');
+    expect(loaded[0].snapshot).toBe(big);
+    expect('snapshotZ' in loaded[0]).toBe(false);
+  });
+
+  it('短いスナップショットはそのまま', () => {
+    const tree = HistoryTree.create('s', 'graph TD', 0);
+    const n = tree.takeDirty()[0];
+    expect(db.encodeNode(n)).toBe(n);
+  });
+});

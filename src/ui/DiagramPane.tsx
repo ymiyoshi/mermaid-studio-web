@@ -2,8 +2,10 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useRender } from '../render/pipeline';
 import { applyDiagramChange, revealRange, showToast, useSession } from '../core/session';
 import { pluginFor } from '../plugins/registry';
-import type { DiagramAction, DiagramTarget } from '../plugins/types';
+import { refKey, sameRef, type DiagramAction, type DiagramTarget, type ElementRef } from '../plugins/types';
 import { InlineLabelEditor, type LabelSession } from './InlineLabelEditor';
+import { PropertyPanel } from './PropertyPanel';
+import { getSetting, putSetting } from '../storage/db';
 import { t } from '../i18n';
 
 interface ViewBox {
@@ -22,8 +24,11 @@ interface Rect {
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 8;
 
-/** 再描画をまたいで同じ要素を指すためのキー。意味上の ID があればそれを使う */
-const keyOf = (x: DiagramTarget) => (x.elementId !== undefined ? `e:${x.elementId}` : x.id);
+/** 再描画をまたいで同じ要素を指すためのキー。意味上の参照があればそれを使う */
+const keyOf = (x: DiagramTarget) => (x.ref ? `e:${refKey(x.ref)}` : x.id);
+
+/** 操作が要素に使えるか */
+const applies = (a: DiagramAction, ref: ElementRef | undefined) => !!ref && (a.appliesTo ?? ['node']).includes(ref.kind);
 
 /** mermaid の SVG は幅 100% で出力されるので、拡大縮小のために本来の大きさに固定する */
 function fixSvgSize(svg: SVGSVGElement) {
@@ -64,12 +69,22 @@ export function DiagramPane() {
   const [targets, setTargets] = useState<DiagramTarget[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [session, setSession] = useState<LabelSession | null>(null);
-  const [connect, setConnect] = useState<{ action: DiagramAction; from: string } | null>(null);
+  const [connect, setConnect] = useState<{ action: DiagramAction; from: ElementRef } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [panelOpen, setPanelOpen] = useState(true);
+  useEffect(() => {
+    void getSetting<boolean>('panelOpen').then((v) => v !== undefined && setPanelOpen(v));
+  }, []);
+  const togglePanel = () =>
+    setPanelOpen((v) => {
+      void putSetting('panelOpen', !v);
+      return !v;
+    });
   const [renderTick, setRenderTick] = useState(0);
   const [toolbarRect, setToolbarRect] = useState<Rect | null>(null);
   const fittedFor = useRef<string | null>(null);
   /** 追加した要素。描画されたらラベル編集を始める */
-  const pendingFocus = useRef<{ elementId?: string; at?: number } | null>(null);
+  const pendingFocus = useRef<{ ref?: ElementRef; at?: number } | null>(null);
 
   const plugin = pluginFor(diagramType);
   const editable = !readOnly && !stale && status === 'ok';
@@ -104,7 +119,7 @@ export function DiagramPane() {
       const p = pendingFocus.current;
       pendingFocus.current = null;
       const added = mapped.find((x) =>
-        p.elementId !== undefined ? x.elementId === p.elementId : x.range !== null && x.range.from === p.at,
+        p.ref !== undefined ? sameRef(x.ref, p.ref) : x.range !== null && x.range.from === p.at,
       );
       if (added) {
         scrollIntoView(added.el);
@@ -154,10 +169,10 @@ export function DiagramPane() {
   useEffect(() => {
     for (const x of targets) {
       const k = keyOf(x);
-      x.el.classList.toggle('mmd-target', x.range !== null || x.elementId !== undefined);
+      x.el.classList.toggle('mmd-target', x.range !== null || x.ref !== undefined);
       x.el.classList.toggle('mmd-selected', k === selectedKey);
       x.el.classList.toggle('mmd-cursor', k === cursorKey && k !== selectedKey);
-      x.el.classList.toggle('mmd-connect-from', !!connect && x.elementId === connect.from);
+      x.el.classList.toggle('mmd-connect-from', !!connect && sameRef(x.ref, connect.from));
     }
   }, [targets, selectedKey, cursorKey, connect]);
 
@@ -172,48 +187,57 @@ export function DiagramPane() {
     // 内側の要素（ノード）を優先する
     let best: DiagramTarget | null = null;
     for (const x of targets) {
-      if (x.el === node || x.el.contains(node)) {
-        if (!best || best.el.contains(x.el)) best = x;
-      }
+      const hit = x.el === node || x.el.contains(node) || x.hits?.some((h) => h === node || h.contains(node));
+      if (hit && (!best || best.el.contains(x.el))) best = x;
     }
     return best;
   };
 
   // ---- 追加・接続の操作 ----
-  const runAction = async (action: DiagramAction, args: string[]) => {
+  const runAction = async (action: DiagramAction, refs: ElementRef[]) => {
     const source = useSession.getState().current?.text.toString();
     if (source === undefined || !editable) return;
-    const res = action.run(source, args);
-    if (!res) return;
-    pendingFocus.current =
-      res.focus !== undefined ? { elementId: res.focus } : res.focusAt !== undefined ? { at: res.focusAt } : null;
+    const res = action.run(source, refs);
+    if (!res) {
+      showToast(t('action.unsupported'));
+      return;
+    }
+    pendingFocus.current = res.focus !== undefined ? { ref: res.focus } : res.focusAt !== undefined ? { at: res.focusAt } : null;
     const r = await applyDiagramChange(res.change, { label: res.label, selAfter: res.selAfter });
     if (r !== 'ok') {
       pendingFocus.current = null;
       if (r === 'invalid') showToast(t('action.invalid'));
+    } else if (action.danger) {
+      setSelectedKey(null);
     }
   };
 
   const triggerAction = (action: DiagramAction) => {
+    setMenu(null);
     if (action.arity === 0) return void runAction(action, []);
-    const from = selected?.elementId;
-    if (from === undefined) return;
+    const from = selected?.ref;
+    if (!from) return;
     if (action.arity === 1) return void runAction(action, [from]);
     setConnect({ action, from });
     viewport.current?.focus();
   };
 
   const toolbarActions = plugin.actions?.filter((a) => a.arity === 0) ?? [];
-  const elementActions = plugin.actions?.filter((a) => a.arity > 0) ?? [];
+  const elementActions = plugin.actions?.filter((a) => a.arity > 0 && applies(a, selected?.ref)) ?? [];
 
   // ---- パンとズーム ----
   const drag = useRef<{ x: number; y: number; vx: number; vy: number; moved: boolean } | null>(null);
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0 && e.button !== 1) return;
-    if ((e.target as Element).closest('.inline-label-editor, .element-toolbar')) return;
+    if ((e.target as Element).closest('.inline-label-editor, .element-toolbar, .context-menu')) return;
+    setMenu(null);
     drag.current = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false };
-    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    try {
+      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    } catch {
+      // ペンや合成イベントなどで捕捉できないときは、捕捉なしで続ける
+    }
   };
   const onPointerMove = (e: React.PointerEvent) => {
     const d = drag.current;
@@ -231,7 +255,8 @@ export function DiagramPane() {
     const hit = targetAt(document.elementFromPoint(e.clientX, e.clientY));
     if (connect) {
       // 接続モード: クリックした要素へ接続する
-      if (hit?.elementId !== undefined) void runAction(connect.action, [connect.from, hit.elementId]);
+      const kinds = connect.action.targetKinds ?? connect.action.appliesTo ?? ['node'];
+      if (hit?.ref && kinds.includes(hit.ref.kind)) void runAction(connect.action, [connect.from, hit.ref]);
       setConnect(null);
       return;
     }
@@ -243,17 +268,17 @@ export function DiagramPane() {
   const onKeyDown = (e: React.KeyboardEvent) => {
     if ((e.target as Element).closest('.inline-label-editor')) return;
     if (e.key === 'Escape') {
-      if (connect) setConnect(null);
+      if (menu) setMenu(null);
+      else if (connect) setConnect(null);
       else setSelectedKey(null);
       return;
     }
     if (!editable || !selected) return;
-    if (e.key === 'Tab' && selected.elementId !== undefined) {
-      const add = elementActions.find((a) => a.arity === 1);
-      if (add) {
-        e.preventDefault();
-        void runAction(add, [selected.elementId]);
-      }
+    const key = e.key === 'Backspace' ? 'Delete' : e.key;
+    const bound = selected.ref ? elementActions.find((a) => a.key === key && a.arity === 1) : undefined;
+    if (bound && selected.ref) {
+      e.preventDefault();
+      void runAction(bound, [selected.ref]);
     } else if (e.key === 'Enter' || e.key === 'F2') {
       e.preventDefault();
       startLabelEdit(selected);
@@ -290,6 +315,16 @@ export function DiagramPane() {
     });
   };
 
+  // 右クリック: 要素に使える操作のメニュー
+  const onContextMenu = (e: React.MouseEvent) => {
+    const hit = targetAt(document.elementFromPoint(e.clientX, e.clientY));
+    if (!hit) return;
+    e.preventDefault();
+    setSelectedKey(keyOf(hit));
+    const vp = viewport.current!.getBoundingClientRect();
+    setMenu({ x: e.clientX - vp.left, y: e.clientY - vp.top });
+  };
+
   // ---- ラベルの直接編集 ----
   const onDoubleClick = (e: React.MouseEvent) => {
     // ポインタキャプチャ中は e.target が viewport になるので、座標から要素を引く
@@ -313,6 +348,11 @@ export function DiagramPane() {
           </button>
         ))}
         <span className="spacer" />
+        {(plugin.inspect || plugin.tables) && (
+          <button className={`btn${panelOpen ? ' active' : ''}`} onClick={togglePanel} aria-pressed={panelOpen}>
+            {t('panel.toggle')}
+          </button>
+        )}
         <button className="icon-btn" title={t('toolbar.zoomOut')} onClick={() => zoomBy(1 / 1.25)}>
           −
         </button>
@@ -344,6 +384,7 @@ export function DiagramPane() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onDoubleClick={onDoubleClick}
+        onContextMenu={onContextMenu}
         onKeyDown={onKeyDown}
       >
         <div
@@ -352,7 +393,7 @@ export function DiagramPane() {
           style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}
         />
         {status === 'empty' && <div className="diagram-empty">{t('diagram.empty')}</div>}
-        {editable && !session && !connect && selected?.elementId !== undefined && toolbarRect && elementActions.length > 0 && (
+        {editable && !session && !connect && !menu && selected?.ref && toolbarRect && elementActions.length > 0 && (
           <div
             className="element-toolbar"
             style={toolbarPosition(toolbarRect, viewport.current)}
@@ -361,13 +402,48 @@ export function DiagramPane() {
             {elementActions.map((a) => (
               <button
                 key={a.id}
-                className="btn"
+                className={`btn${a.danger ? ' danger' : ''}`}
                 onClick={() => triggerAction(a)}
-                title={a.arity === 1 ? `${a.title} (Tab)` : a.title}
+                title={a.key ? `${a.title} (${a.key})` : a.title}
               >
                 {a.title}
               </button>
             ))}
+          </div>
+        )}
+        {menu && selected && (
+          <div className="context-menu menu" role="menu" style={{ left: menu.x, top: menu.y }} onPointerDown={(e) => e.stopPropagation()}>
+            {editable &&
+              elementActions.map((a) => (
+                <button key={a.id} role="menuitem" className={`menu-item${a.danger ? ' danger' : ''}`} onClick={() => triggerAction(a)}>
+                  <span>{a.title}</span>
+                  {a.key && <kbd>{a.key}</kbd>}
+                </button>
+              ))}
+            <button
+              role="menuitem"
+              className="menu-item"
+              disabled={!editable || !selected.range}
+              onClick={() => {
+                setMenu(null);
+                startLabelEdit(selected);
+              }}
+            >
+              <span>{t('menu.editLabel')}</span>
+              <kbd>Enter</kbd>
+            </button>
+            {plugin.inspect && (
+              <button
+                role="menuitem"
+                className="menu-item"
+                onClick={() => {
+                  setMenu(null);
+                  if (!panelOpen) togglePanel();
+                }}
+              >
+                <span>{t('menu.properties')}</span>
+              </button>
+            )}
           </div>
         )}
         {session && (
@@ -386,8 +462,11 @@ export function DiagramPane() {
           />
         )}
       </div>
+      {panelOpen && (plugin.inspect || plugin.tables) && (
+        <PropertyPanel key={plugin.type} plugin={plugin} selected={selected?.ref ?? null} selectedFrom={selected?.range?.from ?? null} editable={editable} />
+      )}
       <div className="pane-footer">
-        {elementActions.some((a) => a.arity === 1)
+        {plugin.actions?.some((a) => a.key === 'Tab')
           ? t('diagram.hintActions')
           : plugin.actions
             ? t('diagram.hintSelect')

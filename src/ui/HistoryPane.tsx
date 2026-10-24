@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { duplicateFromHistory, jumpTo, useSession } from '../core/session';
-import type { Origin } from '../core/history';
+import { duplicateFromHistory, jumpTo, nameCheckpoint, pruneBranches, showToast, useSession } from '../core/session';
+import type { HistoryNode, HistoryTree, Origin } from '../core/history';
+import { renderSvg } from '../render/mermaid';
 import { layoutHistory } from './historyLayout';
 import { t } from '../i18n';
 
 const ROW_H = 30;
 const LANE_W = 14;
+const PREVIEW_DELAY_MS = 350;
 
 const ORIGIN_ICON: Record<Origin, string> = {
   init: '★',
@@ -18,10 +20,84 @@ const ORIGIN_ICON: Record<Origin, string> = {
 
 const timeFmt = new Intl.DateTimeFormat('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
+/** 行の追加・削除の数（順番は見ない簡易な差分） */
+export function lineDiff(before: string, after: string): { added: number; removed: number } {
+  const count = new Map<string, number>();
+  for (const l of before.split('\n')) count.set(l, (count.get(l) ?? 0) + 1);
+  let added = 0;
+  for (const l of after.split('\n')) {
+    const c = count.get(l) ?? 0;
+    if (c > 0) count.set(l, c - 1);
+    else added++;
+  }
+  let removed = 0;
+  for (const c of count.values()) removed += c;
+  return { added, removed };
+}
+
+interface Preview {
+  node: HistoryNode;
+  top: number;
+  right: number;
+}
+
+/** 履歴の行にマウスを置いたときの、その版の図と差分（§8.4） */
+function HistoryPreview({ tree, preview }: { tree: HistoryTree; preview: Preview }) {
+  const [svg, setSvg] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const text = useMemo(() => tree.textAt(preview.node.id), [tree, preview.node.id]);
+  const diff = useMemo(
+    () => (preview.node.parentId ? lineDiff(tree.textAt(preview.node.parentId), text) : null),
+    [tree, preview.node, text],
+  );
+
+  useEffect(() => {
+    let alive = true;
+    setSvg(null);
+    setFailed(false);
+    if (text.trim() === '') return;
+    void renderSvg(text).then((r) => {
+      if (!alive) return;
+      if (r.ok) setSvg(r.svg);
+      else setFailed(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [text]);
+
+  return (
+    <div className="history-preview" style={{ top: preview.top, right: preview.right }} role="tooltip">
+      <div className="preview-head">
+        <strong>{preview.node.name ?? preview.node.label}</strong>
+        <span className="muted small">{new Date(preview.node.ts).toLocaleString('ja-JP')}</span>
+        {diff && (
+          <span className="small">
+            <span className="diff-add">+{diff.added}</span> <span className="diff-del">−{diff.removed}</span> {t('history.lines')}
+          </span>
+        )}
+      </div>
+      <div className="preview-body">
+        {svg ? (
+          <img alt="" src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`} />
+        ) : failed ? (
+          <pre>{text.split('\n').slice(0, 12).join('\n')}</pre>
+        ) : (
+          <span className="muted small">…</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function HistoryPane() {
   const current = useSession((s) => s.current);
   const rev = useSession((s) => s.rev);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [naming, setNaming] = useState<string | null>(null);
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const [confirmPrune, setConfirmPrune] = useState(false);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   const layout = useMemo(() => {
@@ -43,12 +119,27 @@ export function HistoryPane() {
     }
   }, [headRow]);
 
+  useEffect(() => () => void (hoverTimer.current && clearTimeout(hoverTimer.current)), []);
+
   if (!current || !layout) return <section className="pane history-pane" />;
 
   const width = layout.lanes * LANE_W + 6;
   const cx = (lane: number) => lane * LANE_W + LANE_W / 2 + 3;
   const cy = (row: number) => row * ROW_H + ROW_H / 2;
   const total = current.tree.nodes.size - 1;
+  const branches = [...current.tree.nodes.values()].filter((n) => n.children.length > 1).length;
+
+  const hover = (node: HistoryNode, el: HTMLElement) => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    hoverTimer.current = setTimeout(() => {
+      const r = el.getBoundingClientRect();
+      setPreview({ node, top: Math.max(8, Math.min(r.top - 40, innerHeight - 320)), right: innerWidth - r.left + 8 });
+    }, PREVIEW_DELAY_MS);
+  };
+  const leave = () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    setPreview(null);
+  };
 
   return (
     <section className="pane history-pane">
@@ -56,8 +147,36 @@ export function HistoryPane() {
         <span className="pane-title">{t('history.title')}</span>
         <span className="spacer" />
         <span className="muted small">{t('history.steps', { n: String(total) })}</span>
+        <button
+          className="icon-btn"
+          title={t('history.prune')}
+          disabled={current.readOnly || branches === 0}
+          onClick={() => setConfirmPrune(true)}
+        >
+          ✂
+        </button>
       </div>
-      <div className="history-list" ref={listRef}>
+      {confirmPrune && (
+        <div className="prune-confirm" role="alertdialog">
+          <p>{t('history.pruneConfirm')}</p>
+          <div className="modal-actions">
+            <button className="btn" onClick={() => setConfirmPrune(false)}>
+              {t('common.cancel')}
+            </button>
+            <button
+              className="btn danger"
+              onClick={async () => {
+                setConfirmPrune(false);
+                const n = await pruneBranches();
+                showToast(t('history.pruned', { n: String(n) }));
+              }}
+            >
+              {t('history.pruneRun')}
+            </button>
+          </div>
+        </div>
+      )}
+      <div className="history-list" ref={listRef} onScroll={leave}>
         <div className="history-inner" style={{ height: layout.rows.length * ROW_H }}>
           <svg className="history-graph" width={width} height={layout.rows.length * ROW_H} aria-hidden>
             {layout.edges.map((e, i) => {
@@ -78,7 +197,7 @@ export function HistoryPane() {
                   cx={cx(r.lane)}
                   cy={cy(i)}
                   r={r.node.id === headId ? 6 : 4}
-                  className={r.node.id === headId ? 'history-dot head' : 'history-dot'}
+                  className={`history-dot${r.node.id === headId ? ' head' : ''}${r.node.name ? ' named' : ''}`}
                 />
               ) : (
                 <circle key={r.key} cx={cx(r.lane)} cy={cy(i)} r={2.5} className="history-dot fold" />
@@ -89,14 +208,52 @@ export function HistoryPane() {
             r.kind === 'node' ? (
               <div
                 key={r.node.id}
-                className={`history-row${r.node.id === headId ? ' head' : ''}`}
+                className={`history-row${r.node.id === headId ? ' head' : ''}${r.node.name ? ' named' : ''}`}
                 style={{ top: i * ROW_H, left: width, height: ROW_H }}
-                onClick={() => jumpTo(r.node.id)}
-                title={`${r.node.label}\n${new Date(r.node.ts).toLocaleString('ja-JP')}`}
+                onClick={() => naming !== r.node.id && jumpTo(r.node.id)}
+                onMouseEnter={(e) => hover(r.node, e.currentTarget)}
+                onMouseLeave={leave}
               >
-                <span className="history-icon">{ORIGIN_ICON[r.node.origin]}</span>
-                <span className="history-label">{r.node.label}</span>
+                <span className="history-icon">{r.node.name ? '🔖' : ORIGIN_ICON[r.node.origin]}</span>
+                {naming === r.node.id ? (
+                  <input
+                    className="history-name-input"
+                    autoFocus
+                    defaultValue={r.node.name ?? ''}
+                    placeholder={t('history.namePlaceholder')}
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.nativeEvent.isComposing) return;
+                      if (e.key === 'Enter') {
+                        nameCheckpoint(r.node.id, (e.target as HTMLInputElement).value);
+                        setNaming(null);
+                      } else if (e.key === 'Escape') setNaming(null);
+                    }}
+                    onBlur={(e) => {
+                      nameCheckpoint(r.node.id, e.target.value);
+                      setNaming(null);
+                    }}
+                  />
+                ) : (
+                  <span className="history-label">
+                    {r.node.name && <span className="checkpoint-name">{r.node.name}</span>}
+                    {r.node.label}
+                  </span>
+                )}
                 <span className="history-time">{timeFmt.format(r.node.ts)}</span>
+                <button
+                  className="history-dup"
+                  title={t('history.name')}
+                  disabled={current.readOnly}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    leave();
+                    setNaming(r.node.id);
+                  }}
+                >
+                  🔖
+                </button>
                 <button
                   className="history-dup"
                   title={t('history.duplicate')}
@@ -121,6 +278,7 @@ export function HistoryPane() {
           )}
         </div>
       </div>
+      {preview && <HistoryPreview tree={current.tree} preview={preview} />}
     </section>
   );
 }

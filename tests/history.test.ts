@@ -179,3 +179,41 @@ describe('minimalReplace', () => {
     expect(n).toBe(1);
   });
 });
+
+describe('チェックポイントと分岐の整理', () => {
+  it('今の版に至らない分岐を消し、残った履歴で undo / redo / textAt が動く', () => {
+    const h = new Harness('a');
+    h.insert(1, 'b');
+    const b = h.tree.headId;
+    h.insert(2, 'c');
+    h.undo();
+    h.undo();
+    h.insert(1, 'x'); // 分岐 1
+    const x = h.tree.headId;
+    h.jump(b);
+    h.insert(2, 'y'); // 分岐 2（b の子）
+    h.undo(); // head = b。子 c / y は残る（redo で進める先）
+    const removed = h.tree.pruneBranches();
+    expect(removed).toEqual([x]);
+    expect(h.tree.nodes.has(x)).toBe(false);
+    expect(h.tree.get(h.tree.rootId).children).toEqual([b]);
+    expect(h.tree.get(h.tree.rootId).lastChild).toBe(b);
+    expect(h.tree.get(b).children).toHaveLength(2);
+    h.redo();
+    expect(h.s).toBe('aby');
+    h.undo();
+    h.undo();
+    expect(h.s).toBe('a');
+  });
+
+  it('名前を付けて、外せる', () => {
+    const h = new Harness('a');
+    h.insert(1, 'b');
+    h.tree.takeDirty();
+    h.tree.setName(h.tree.headId, ' 完成版 ');
+    expect(h.tree.head.name).toBe('完成版');
+    expect(h.tree.dirty.has(h.tree.headId)).toBe(true);
+    h.tree.setName(h.tree.headId, '');
+    expect('name' in h.tree.head).toBe(false);
+  });
+});
