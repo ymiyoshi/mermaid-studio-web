@@ -183,6 +183,19 @@ describe('flowchart: ノードの形とラベル', () => {
     expect(apply(SRC, setShape(SRC, 'E', 'rhombus')!)).toContain('E{終了}');
   });
 
+  it('mermaid の別名で書いた形（diamond など）も、選択肢の同じ形として読む', async () => {
+    const src = 'flowchart LR\n  A@{ shape: diamond }\n  B@{ shape: document }\n  C@{ shape: database }\n  D@{ shape: paper-tape }\n';
+    await db(src); // mermaid が別名を受け付けること
+    const expected = { A: 'rhombus', B: '@doc', C: 'cylinder', D: '@flag' };
+    for (const [id, value] of Object.entries(expected)) {
+      expect(shapeValue(src, id), id).toBe(value);
+      // 選択肢に足した「読めない値」ではなく、もとからある選択肢
+      expect(field(src, 'node', id, 'shape').options!.filter((o) => o.value.startsWith('@') && !o.label.includes('@{')), id).toEqual([]);
+    }
+    // 別の形を選ぶと、正式な名前で書く
+    expect(apply(src, setShape(src, 'A', 'hexagon')!)).toContain('A@{ shape: hex }');
+  });
+
   it('mermaid 12.2 で、選択肢のすべての新しい形を描ける（構文として通る）', async () => {
     const shapes = field(SRC, 'node', 'B', 'shape').options!.filter((o) => o.value.startsWith('@'));
     expect(shapes.length).toBeGreaterThan(30);

@@ -76,8 +76,16 @@ test('プロパティで形を変えた直後でも、Delete で消せる', asyn
   await openApp(page);
   await node(page, '処理を実行').click();
   await expect(page.locator('.panel-heading')).toHaveText('ノード: C');
-  await page.getByLabel('形').selectOption('cylinder');
+  // 形は文字ではなく図形で並べる
+  await page.getByLabel('形', { exact: true }).click();
+  const chips = page.locator('.property-panel .shape-chip');
+  await expect(chips.first().locator('svg')).toBeVisible();
+  await expect(chips.filter({ has: page.locator('svg') })).toHaveCount(await chips.count());
+  await expect(page.getByRole('button', { name: '四角', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: '円柱（DB）', exact: true }).click();
+  await expect(chips).toHaveCount(0);
   await expect.poll(() => editorText(page)).toContain('C[(処理を実行)]');
+  await expect(page.getByLabel('形', { exact: true })).toContainText('円柱（DB）');
 
   await node(page, 'スキップ').click();
   await page.keyboard.press('Delete');
@@ -120,7 +128,8 @@ test('Ctrl を押しながら複数のノードを選び、形をまとめて変
   await node(page, '終了').click({ modifiers: ['Control'] });
   await expect(page.locator('.panel-heading')).toHaveText('3 個のノード');
   await expect(page.locator('.diagram-canvas .mmd-selected')).toHaveCount(3);
-  await page.getByLabel('形').selectOption('cylinder');
+  await page.getByLabel('形', { exact: true }).click();
+  await page.getByRole('button', { name: '円柱（DB）', exact: true }).click();
   await expect.poll(() => editorText(page)).toContain('A[(開始)]');
   const text = await editorText(page);
   expect(text).toContain('C[(処理を実行)]');

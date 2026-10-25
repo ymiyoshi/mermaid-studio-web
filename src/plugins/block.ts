@@ -288,7 +288,7 @@ export const blockPlugin: DiagramPlugin = {
     return [
       { id: 'id', label: 'ID', type: 'text', value: item.id, readonly: true },
       { id: 'label', label: t('plg.label'), type: 'text', value: item.label ? source.slice(item.label.from, item.label.to) : '' },
-      { id: 'shape', label: t('blk.field.shape'), type: 'select', value: shape, options: BLOCK_SHAPES.map((s) => ({ value: s.name, label: s.label })) },
+      { id: 'shape', label: t('blk.field.shape'), type: 'shape', value: shape, options: BLOCK_SHAPES.map((s) => ({ value: s.name, label: s.label })) },
       { id: 'width', label: t('blk.field.width'), type: 'number', value: item.width ? String(item.width.value) : '', placeholder: '1' },
     ];
   },

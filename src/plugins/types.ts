@@ -75,8 +75,8 @@ export interface DiagramAction {
 export interface PropertyField {
   id: string;
   label: string;
-  /** color は文字でも打て、パレットからも選べる欄 */
-  type: 'text' | 'number' | 'select' | 'color';
+  /** color は文字でも打て、パレットからも選べる欄。shape は選択肢を図形で並べる欄（値は形の名前） */
+  type: 'text' | 'number' | 'select' | 'color' | 'shape';
   value: string;
   options?: { value: string; label: string }[];
   placeholder?: string;

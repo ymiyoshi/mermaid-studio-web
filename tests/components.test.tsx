@@ -84,6 +84,14 @@ describe('FieldInput', () => {
   });
 
   it('選択肢は選んだときにすぐ反映する', async () => {
+    const dir = flowchartPlugin.inspect!(SRC, null).find((f) => f.id === 'direction')!;
+    expect(dir.type).toBe('select');
+    render(<FieldInput field={dir} disabled={false} build={(src, v) => flowchartPlugin.setProperty!(src, null, 'direction', v)} historyLabel="向きを変更" />);
+    fireEvent.change(screen.getByLabelText(dir.label), { target: { value: 'TB' } });
+    await waitFor(() => expect(text()).toBe('flowchart TB\n  A[開始] --> B\n'));
+  });
+
+  it('形は図形の一覧から選び、選んだときにすぐ反映する', async () => {
     const shape = flowchartPlugin.inspect!(SRC, { kind: 'node', id: 'A' }).find((f) => f.id === 'shape')!;
     render(
       <FieldInput
@@ -93,8 +101,66 @@ describe('FieldInput', () => {
         historyLabel="形を変更"
       />,
     );
-    fireEvent.change(screen.getByLabelText('形'), { target: { value: 'circle' } });
+    const current = screen.getByLabelText('形');
+    expect(current.querySelector('svg')).not.toBeNull();
+    fireEvent.click(current);
+    expect(screen.getByRole('button', { name: '四角' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: '円' }));
     await waitFor(() => expect(text()).toBe('flowchart LR\n  A((開始)) --> B\n'));
+    // 選んだら一覧は閉じ、フォーカスは形のボタンに戻る
+    expect(screen.queryByRole('button', { name: '円' })).toBeNull();
+    expect(document.activeElement).toBe(current);
+  });
+
+  describe('形の欄', () => {
+    const shapeField = () => flowchartPlugin.inspect!(SRC, { kind: 'node', id: 'A' }).find((f) => f.id === 'shape')!;
+    const buildShape = (src: string, v: string) => flowchartPlugin.setProperty!(src, { kind: 'node', id: 'A' }, 'shape', v);
+
+    it('反映できなかった形の後で元の形を選ぶと、表示と赤い印が元に戻る', async () => {
+      // 円だけは反映できない、とする
+      render(<FieldInput field={shapeField()} disabled={false} build={(src, v) => (v === 'circle' ? null : buildShape(src, v))} historyLabel="x" />);
+      const current = screen.getByLabelText('形');
+      fireEvent.click(current);
+      fireEvent.click(screen.getByRole('button', { name: '円' }));
+      await waitFor(() => expect(current.className).toContain('invalid'));
+      fireEvent.click(current);
+      fireEvent.click(screen.getByRole('button', { name: '四角' }));
+      await waitFor(() => expect(current.className).not.toContain('invalid'));
+      expect(current.textContent).toBe('四角');
+      expect(text()).toBe(SRC);
+    });
+
+    it('今の形を説明として読み上げ、Escape で閉じたらフォーカスを形のボタンに戻す', () => {
+      render(<FieldInput field={shapeField()} disabled={false} build={buildShape} historyLabel="x" />);
+      const current = screen.getByLabelText('形');
+      expect(current.getAttribute('aria-describedby') && document.getElementById(current.getAttribute('aria-describedby')!)?.textContent).toBe('四角');
+      fireEvent.click(current);
+      const chip = screen.getByRole('button', { name: '円' });
+      chip.focus();
+      fireEvent.keyDown(chip, { key: 'Escape' });
+      expect(screen.queryByRole('group', { name: '形の一覧' })).toBeNull();
+      expect(document.activeElement).toBe(current);
+    });
+
+    it('編集できなくなったら一覧を閉じ、編集できるようになっても勝手に開かない', () => {
+      const { rerender } = render(<FieldInput field={shapeField()} disabled={false} build={buildShape} historyLabel="x" />);
+      fireEvent.click(screen.getByLabelText('形'));
+      expect(screen.getByRole('group', { name: '形の一覧' })).toBeTruthy();
+      rerender(<FieldInput field={shapeField()} disabled build={buildShape} historyLabel="x" />);
+      expect(screen.getByLabelText('形').getAttribute('aria-expanded')).toBe('false');
+      rerender(<FieldInput field={shapeField()} disabled={false} build={buildShape} historyLabel="x" />);
+      expect(screen.queryByRole('group', { name: '形の一覧' })).toBeNull();
+    });
+
+    it('プロパティパネルでは形の行を label で囲まない（一覧の空いた所を押しても閉じない）', () => {
+      render(<PropertyPanel plugin={flowchartPlugin} selected={{ kind: 'node', id: 'A' }} selectedFrom={null} editable />);
+      const current = screen.getByLabelText('形');
+      expect(current.closest('label')).toBeNull();
+      fireEvent.click(current);
+      const palette = screen.getByRole('group', { name: '形の一覧' });
+      fireEvent.click(palette);
+      expect(screen.getByRole('group', { name: '形の一覧' })).toBeTruthy();
+    });
   });
 
   describe('色の欄', () => {

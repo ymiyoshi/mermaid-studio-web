@@ -1833,6 +1833,89 @@ button.tag {
   background: none;
 }
 
+/* ---- 形の入力欄（今の形のボタン + 図形の一覧） ---- */
+.shape-input {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.shape-current {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.shape-current:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.shape-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shape-icon {
+  flex: none;
+  width: 32px;
+  height: 20px;
+}
+
+/* 色のパレットと同じく、行の中で折り返して入力欄の下に出す */
+.shape-palette {
+  flex-basis: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+  gap: 4px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.shape-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.shape-chip:hover {
+  border-color: var(--select);
+}
+
+/* 今の形の印は枠で付ける（outline はフォーカスの印に残す） */
+.shape-chip.current {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.shape-chip-text {
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ---- 部品集 ---- */
 .modal.snippets-dialog {
   width: min(640px, 100%);

@@ -101,7 +101,7 @@ export const mindmapPlugin: DiagramPlugin = {
       {
         id: 'shape',
         label: t('mm.field.shape'),
-        type: 'select',
+        type: 'shape',
         value: m.shape?.name ?? 'default',
         options: [{ value: 'default', label: t('mm.shape.default') }, ...MINDMAP_SHAPES.map((s) => ({ value: s.name, label: s.label }))],
       },

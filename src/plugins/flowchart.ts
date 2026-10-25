@@ -242,7 +242,7 @@ export const flowchartPlugin: DiagramPlugin = {
       return [
         { id: 'id', label: 'ID', type: 'text', value: ref.id, commitOnBlur: true },
         { id: 'label', label: t('fc.prop.label'), type: 'text', value: label ? source.slice(label.from, label.to) : ref.id },
-        { id: 'shape', label: t('fc.prop.shape'), type: 'select', value: shape, options: withValue(SHAPE_OPTIONS, shape) },
+        { id: 'shape', label: t('fc.prop.shape'), type: 'shape', value: shape, options: withValue(SHAPE_OPTIONS, shape) },
         {
           id: 'subgraph',
           label: t('fc.prop.subgraph'),
