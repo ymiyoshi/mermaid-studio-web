@@ -15,11 +15,12 @@ export function schedulePersist() {
   persistTimer = setTimeout(() => void flush(), PERSIST_DELAY_MS);
 }
 
-export async function flush(): Promise<void> {
+/** 保存できた（または保存するものが無かった）ら true。失敗したら false（変更は dirty のまま残る） */
+export async function flush(): Promise<boolean> {
   if (persistTimer) clearTimeout(persistTimer);
   persistTimer = null;
   const cur = get().current;
-  if (!cur || cur.readOnly || (!docDirty && cur.tree.dirty.size === 0)) return;
+  if (!cur || cur.readOnly || (!docDirty && cur.tree.dirty.size === 0)) return true;
   docDirty = false;
   const nodes = cur.tree.takeDirty();
   const record: store.DocRecord = {
@@ -41,8 +42,11 @@ export async function flush(): Promise<void> {
     nodes.forEach((n) => cur.tree.dirty.add(n.id));
     docDirty = true;
     showToast(String((e as Error)?.message ?? e));
+    void refreshStorageInfo();
+    return false;
   }
   void refreshStorageInfo();
+  return true;
 }
 
 /** 一覧の文書を差し替え（無ければ足し）、更新の新しい順に並べる */

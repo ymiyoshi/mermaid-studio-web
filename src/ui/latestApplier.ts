@@ -43,7 +43,11 @@ export class LatestValueApplier {
     try {
       while (this.latest !== this.settled) {
         const value = this.latest;
-        if (!(await this.apply(value))) break;
+        if (!(await this.apply(value))) {
+          // 待つ間に次の値が来ていたら、それを続けて試す（来ていない・IME の変換中なら保留して次の push / run を待つ）
+          if (this.latest === value || this.isPaused()) break;
+          continue;
+        }
         this.settled = value;
       }
     } finally {

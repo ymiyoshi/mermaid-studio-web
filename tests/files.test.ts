@@ -4,7 +4,7 @@ import 'fake-indexeddb/auto';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { ChangeSet } from '@codemirror/state';
 import { applyChanges, useSession } from '../src/core/session';
-import { checkExternalChange, ignoreExternalChange, importFile, saveFile } from '../src/io/files';
+import { checkExternalChange, ignoreExternalChange, importFile, reloadFromFile, saveFile } from '../src/io/files';
 import { exportBackup, importBackupFile } from '../src/io/backup';
 import { copyShareLink, importFromLocationHash } from '../src/io/shareActions';
 import { encodeShare } from '../src/io/share';
@@ -34,6 +34,23 @@ function chooseBlockWhenAsked(index: number) {
       s.blockPicker.resolve(index);
     }
   });
+}
+
+/** hold() してから release() するまで getFile を待たせるハンドル（権限の確認などで待つ間を作る） */
+class GatedHandle extends FakeHandle {
+  private gate: Promise<void> | null = null;
+  hold() {
+    let release!: () => void;
+    this.gate = new Promise((r) => (release = r));
+    return () => {
+      this.gate = null;
+      release();
+    };
+  }
+  async getFile() {
+    if (this.gate) await this.gate;
+    return super.getFile();
+  }
 }
 
 let downloads: ReturnType<typeof captureDownloads>;
@@ -147,6 +164,53 @@ describe('外部での変更', () => {
     expect(useIo.getState().conflict).toBeNull();
     await checkExternalChange();
     expect(useIo.getState().conflict).toBeNull();
+  });
+
+  it('ファイルを待つ間に入力したら、黙って読み込み直さずに確認のバナーを出す', async () => {
+    const h = new GatedHandle('g.mmd', 'graph TD\n  A\n');
+    installPickers(h);
+    await importFile(await h.getFile(), h as unknown as FileSystemFileHandle);
+    h.touch('graph TD\n  X\n');
+    const release = h.hold();
+    const checking = checkExternalChange();
+    await Promise.resolve();
+    typeAtEnd('  B\n');
+    release();
+    await checking;
+    expect(text()).toBe('graph TD\n  A\n  B\n');
+    expect(useIo.getState().conflict).toMatchObject({ localChanges: true });
+  });
+
+  it('再読み込みでファイルを待つ間に入力しても、ファイルの内容に置き換わる', async () => {
+    const h = new GatedHandle('h.mmd', 'graph TD\n  A\n');
+    installPickers(h);
+    await importFile(await h.getFile(), h as unknown as FileSystemFileHandle);
+    h.touch('graph TD\n  X --> Y\n');
+    const release = h.hold();
+    const reloading = reloadFromFile();
+    await Promise.resolve();
+    typeAtEnd('  B\n');
+    release();
+    await reloading;
+    expect(text()).toBe('graph TD\n  X --> Y\n');
+    expect(cur().file).toMatchObject({ savedText: 'graph TD\n  X --> Y\n', lastModified: h.mtime });
+  });
+
+  it('再読み込みでファイルを待つ間に別の図へ切り替えたら、切り替え後の図には触れない', async () => {
+    const h = new GatedHandle('i.mmd', 'graph TD\n  A\n');
+    installPickers(h);
+    await importFile(await h.getFile(), h as unknown as FileSystemFileHandle);
+    h.touch('graph TD\n  X --> Y\n');
+    const release = h.hold();
+    const reloading = reloadFromFile();
+    await Promise.resolve();
+    installPickers(null);
+    await importFile(new File(['graph LR\n  P\n'], 'other.mmd', { lastModified: 5 }), null);
+    release();
+    await reloading;
+    expect(cur().title).toBe('other');
+    expect(text()).toBe('graph LR\n  P\n');
+    expect(historyLabels()).toEqual(['ファイルから読み込み']);
   });
 });
 
