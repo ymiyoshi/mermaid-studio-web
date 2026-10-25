@@ -56,7 +56,8 @@ export function openDoc(id: string): Promise<void> {
 async function openDocNow(id: string): Promise<void> {
   // 今開いている図なら何もしない。書き込み権を手放してすぐ取り直すと、ブラウザによっては取れずに読み取り専用になる
   if (get().current?.id === id && currentLock) return;
-  await flush();
+  // 保存に失敗したら今の図に留まる。切り替えると、未保存の変更（履歴）がメモリから消えて失われる
+  if (!(await flush())) return;
   currentLock?.release();
   currentLock = null;
 

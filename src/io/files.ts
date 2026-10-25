@@ -290,9 +290,13 @@ export async function checkExternalChange(ask = false) {
   try {
     if (!(await ensurePermission(b.handle, 'read', ask))) return;
     const file = await b.handle.getFile();
-    if (file.lastModified <= b.lastModified) return;
-    const localChanges = cur.text.toString() !== b.savedText;
-    if (localChanges) useIo.setState({ conflict: { docId: cur.id, name: b.name, localChanges } });
+    // 待つ間に入力・保存・図の切り替えが起きうるので、判断は今の状態で行う
+    const now = useSession.getState().current;
+    const nb = now?.file;
+    if (!now || now.id !== cur.id || !nb || now.readOnly) return;
+    if (file.lastModified <= nb.lastModified) return;
+    const localChanges = now.text.toString() !== nb.savedText;
+    if (localChanges) useIo.setState({ conflict: { docId: now.id, name: nb.name, localChanges } });
     else await reloadFromFile();
   } catch {
     // ファイルが移動・削除された場合など。結び付きはそのまま残す
@@ -309,8 +313,11 @@ export async function reloadFromFile() {
     const file = await b.handle.getFile();
     const text = extract(b, await file.text());
     if (text === null) return showToast(t('file.blockMissing', { name: b.name }));
-    applyChanges(minimalReplace(cur.text, text), { origin: 'file-load', label: t('history.fileReload', { name: b.name }) });
-    await setFileBinding({ ...b, lastModified: file.lastModified, savedText: text });
+    // 待つ間に別の図へ切り替わっていたら何もしない。同じ図なら、待つ間の入力も含めて今のテキストから置き換える
+    const now = useSession.getState().current;
+    if (!now || now.id !== cur.id) return;
+    applyChanges(minimalReplace(now.text, text), { origin: 'file-load', label: t('history.fileReload', { name: b.name }) });
+    await setFileBinding({ ...(now.file ?? b), lastModified: file.lastModified, savedText: text });
     useIo.setState({ conflict: null });
   } catch (e) {
     reportError(e);

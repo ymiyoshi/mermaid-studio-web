@@ -47,6 +47,34 @@ describe('LatestValueApplier', () => {
     expect(c.calls).toEqual(['A[', 'A[b]']);
   });
 
+  it('失敗した値の反映を待つ間に来た値は、続けて反映する', async () => {
+    const c = controlled((v) => v === 'A[');
+    const a = new LatestValueApplier(c.apply, 'A');
+    void a.push('A[');
+    void a.push('A[b]');
+    await c.step();
+    expect(c.calls).toEqual(['A[', 'A[b]']);
+    await c.step();
+    expect(a.pending).toBe('A[b]');
+    await a.push('A[b]');
+    expect(c.calls).toEqual(['A[', 'A[b]']);
+  });
+
+  it('失敗した値の反映を待つ間に止められたら、来た値は run() まで反映しない', async () => {
+    const c = controlled((v) => v === 'A[');
+    let paused = false;
+    const a = new LatestValueApplier(c.apply, 'A', () => paused);
+    void a.push('A[');
+    paused = true;
+    void a.push('A[に');
+    await c.step();
+    expect(c.calls).toEqual(['A[']);
+    paused = false;
+    void a.run();
+    await c.step();
+    expect(c.calls).toEqual(['A[', 'A[に']);
+  });
+
   it('止めている間は反映せず、run() で保留の値を反映する', async () => {
     const c = controlled();
     let paused = true;
