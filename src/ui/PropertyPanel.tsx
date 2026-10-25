@@ -1,6 +1,6 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useMemo, useState, type ReactNode } from 'react';
 import { applyDiagramChange, revealRange, showToast, useSession } from '../core/session';
-import { isPositional, refKey, type DiagramPlugin, type ElementRef } from '../plugins/types';
+import { isPositional, refKey, type DiagramPlugin, type ElementRef, type PropertyField } from '../plugins/types';
 import { composeEach } from '../plugins/source';
 import { DIAGRAM_THEMES, THEME_COLORS, getFrontmatterValue, setFrontmatterValue } from '../plugins/frontmatter';
 import { withValue } from '../plugins/types';
@@ -88,15 +88,14 @@ export const PropertyPanel = memo(function PropertyPanel({ plugin, selected, sel
             ) : (
               <div className="prop-grid">
                 {fields.map((f) => (
-                  <label key={`${selected?.kind}:${selected?.id}:${f.id}`} className="prop-row">
-                    <span>{f.label}</span>
+                  <PropRow key={`${selected?.kind}:${selected?.id}:${f.id}`} field={f}>
                     <FieldInput
                       field={f}
                       disabled={!editable}
                       historyLabel={t('history.prop', { name: f.label })}
                       build={(src, v) => plugin.setProperty?.(src, selected, f.id, v) ?? null}
                     />
-                  </label>
+                  </PropRow>
                 ))}
               </div>
             )}
@@ -106,6 +105,21 @@ export const PropertyPanel = memo(function PropertyPanel({ plugin, selected, sel
     </div>
   );
 });
+
+/**
+ * プロパティの 1 行（欄の名前と入力欄）。
+ * 形の欄はボタンを並べた一覧なので label で囲まない（label は、中の空いた所や欄の名前を押しても
+ * 最初のボタン（一覧を開け閉めするボタン）を押したことにするので、一覧が勝手に閉じたり開き直したりする）
+ */
+function PropRow({ field, children }: { field: PropertyField; children: ReactNode }) {
+  const Row = field.type === 'shape' ? 'div' : 'label';
+  return (
+    <Row className="prop-row">
+      <span>{field.label}</span>
+      {children}
+    </Row>
+  );
+}
 
 /**
  * まとめて編集: 選んだ要素に共通するプロパティ（同じ種類の要素の、ID 以外の項目）を並べる。
@@ -126,6 +140,8 @@ function BulkFields({ plugin, source, refs, editable }: { plugin: DiagramPlugin;
         const values = new Set(each.map((fs) => fs.find((g) => g.id === f.id)!.value));
         if (values.size === 1) return f;
         // 値がそろっていない。選択欄は「（いろいろ）」という選べない印を出す（'' は「なし」などの本当の値のことがある）
+        // 形の一覧には印を並べず、どれも選ばれていない状態で「（いろいろ）」と出す
+        if (f.type === 'shape') return { ...f, value: MIXED, placeholder: t('bulk.mixed') };
         return f.type === 'select'
           ? { ...f, value: MIXED, options: [{ value: MIXED, label: t('bulk.mixed') }, ...(f.options ?? [])] }
           : { ...f, value: '', placeholder: t('bulk.mixed') };
@@ -141,15 +157,14 @@ function BulkFields({ plugin, source, refs, editable }: { plugin: DiagramPlugin;
       ) : (
         <div className="prop-grid">
           {fields.map((f) => (
-            <label key={`${key}:${f.id}`} className="prop-row">
-              <span>{f.label}</span>
+            <PropRow key={`${key}:${f.id}`} field={f}>
               <FieldInput
                 field={f}
                 disabled={!editable}
                 historyLabel={t('bulk.prop', { name: f.label, n: String(refs.length) })}
                 build={(src, v) => (v === MIXED ? null : composeEach(src, refs, (s, r) => plugin.setProperty?.(s, r, f.id, v) ?? null, isPositional))}
               />
-            </label>
+            </PropRow>
           ))}
         </div>
       )}

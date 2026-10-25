@@ -1,17 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { ChangeSpec } from '@codemirror/state';
 import { applyDiagramChange, useSession } from '../core/session';
 import { LatestValueApplier } from './latestApplier';
 import { PALETTE, isCssColor, toHex } from './colors';
+import { shapeIcon } from './shapeIcons';
 import { t } from '../i18n';
 
 // プロパティパネルと表の入力欄。
 // 文字の入力は 1 打鍵ごとにテキストへ反映し、入力欄にフォーカスしている間の変更は履歴上 1 ステップにまとめる。
 // 構文が壊れる値は反映を保留し、入力欄を赤くする（§6.2）。
 // 色の欄は、文字で打てる入力欄に、パレット（よく使う色・その他の色）を開くボタンを添える。
+// 形の欄は、今の形を図形で示すボタンと、選択肢の図形を並べた一覧にする（選択欄では図形を出せないため）。
 
 export interface FieldSpec {
-  type: 'text' | 'number' | 'select' | 'color';
+  type: 'text' | 'number' | 'select' | 'color' | 'shape';
   value: string;
   options?: { value: string; label: string }[];
   placeholder?: string;
@@ -41,7 +43,10 @@ export function FieldInput({ field, disabled, build, historyLabel, className }: 
   const labelRef = useRef(historyLabel);
   labelRef.current = historyLabel;
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const colorRef = useRef<HTMLSpanElement>(null);
+  const popupRef = useRef<HTMLSpanElement>(null);
+  /** パレットを開くボタン。パレットを閉じたら、ここへフォーカスを戻す（選んだ・閉じたボタンが消えて、フォーカスが迷子にならないように） */
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const nameId = useId();
   const applier = useRef<LatestValueApplier | null>(null);
   applier.current ??= new LatestValueApplier(
     async (next) => {
@@ -73,15 +78,35 @@ export function FieldInput({ field, disabled, build, historyLabel, className }: 
   useEffect(() => {
     if (!paletteOpen) return;
     const close = (e: PointerEvent) => {
-      if (!colorRef.current?.contains(e.target as Node)) setPaletteOpen(false);
+      if (!popupRef.current?.contains(e.target as Node)) setPaletteOpen(false);
     };
     addEventListener('pointerdown', close);
     return () => removeEventListener('pointerdown', close);
   }, [paletteOpen]);
 
+  // 形の一覧は長いので、開いたらパネルの見える所まで送る。
+  // パネルより長いときは、今の形のボタンが上端より上に隠れない所で止める（scrollIntoView の nearest は下端に合わせることがある）
+  useEffect(() => {
+    if (!paletteOpen || field.type !== 'shape' || !popupRef.current) return;
+    const el = popupRef.current;
+    let box = el.parentElement;
+    while (box && !(box.scrollHeight > box.clientHeight && /auto|scroll/.test(getComputedStyle(box).overflowY))) box = box.parentElement;
+    if (!box) return;
+    const r = el.getBoundingClientRect();
+    const b = box.getBoundingClientRect();
+    if (r.top < b.top) box.scrollTop += r.top - b.top;
+    else if (r.bottom > b.bottom) box.scrollTop += Math.min(r.bottom - b.bottom, r.top - b.top);
+  }, [paletteOpen, field.type]);
+
+  const off = disabled || field.readonly;
+  // 編集できなくなったら閉じる（開いたままにすると、編集できるようになったときに勝手に開く）
+  useEffect(() => {
+    if (off) setPaletteOpen(false);
+  }, [off]);
+
   const change = (v: string) => {
     setLocal(v);
-    if (!field.commitOnBlur || field.type === 'select') void applier.current!.push(v);
+    if (!field.commitOnBlur || field.type === 'select' || field.type === 'shape') void applier.current!.push(v);
   };
 
   const common = {
@@ -105,6 +130,72 @@ export function FieldInput({ field, disabled, build, historyLabel, className }: 
     },
   };
 
+  const closePalette = () => {
+    setPaletteOpen(false);
+    toggleRef.current?.focus();
+  };
+  /** パレットや形の一覧で選んだ値。1 回選ぶごとに履歴 1 ステップにして、パレットを閉じる */
+  const pick = (v: string) => {
+    closePalette();
+    if (v === field.value) {
+      // ソースの値に戻すだけ。反映できなかった値を選んだ後でも、表示と赤い印を元に戻す
+      // （反映を待つ値と同じなので、push しても何も起きない）
+      setLocal(v);
+      applier.current!.reset(v);
+      setInvalid(false);
+      return;
+    }
+    session.current = crypto.randomUUID();
+    change(v);
+  };
+  const closeOnEscape = (e: ReactKeyboardEvent) => {
+    if (e.key === 'Escape' && paletteOpen) {
+      e.stopPropagation();
+      closePalette();
+    }
+  };
+
+  if (field.type === 'shape') {
+    const current = field.options?.find((o) => o.value === local);
+    return (
+      <span className={`shape-input ${className ?? ''}`} ref={popupRef} onKeyDown={closeOnEscape}>
+        <button
+          ref={toggleRef}
+          type="button"
+          className={`shape-current${invalid ? ' invalid' : ''}`}
+          aria-label={field.label}
+          // 名前は欄の名前（形）だけなので、今の形は説明として読み上げる
+          aria-describedby={nameId}
+          title={invalid ? t('label.invalid') : current?.label}
+          aria-expanded={paletteOpen}
+          disabled={off}
+          onClick={() => setPaletteOpen((v) => !v)}
+        >
+          {current && shapeIcon(current.value)}
+          <span className="shape-name" id={nameId}>
+            {current?.label ?? field.placeholder ?? local}
+          </span>
+        </button>
+        {paletteOpen && !off && (
+          <span className="shape-palette" role="group" aria-label={t('shape.palette')}>
+            {field.options?.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                className={`shape-chip${o.value === local ? ' current' : ''}`}
+                title={o.label}
+                aria-label={o.label}
+                aria-pressed={o.value === local}
+                onClick={() => pick(o.value)}
+              >
+                {shapeIcon(o.value) ?? <span className="shape-chip-text">{o.label}</span>}
+              </button>
+            ))}
+          </span>
+        )}
+      </span>
+    );
+  }
   if (field.type === 'select') {
     return (
       <select {...common} value={local} onChange={(e) => change(e.target.value)}>
@@ -144,25 +235,11 @@ export function FieldInput({ field, disabled, build, historyLabel, className }: 
   );
   if (field.type !== 'color') return input;
 
-  /** パレットで選んだ色。1 回選ぶごとに履歴 1 ステップにする */
-  const pick = (v: string) => {
-    session.current = crypto.randomUUID();
-    change(v);
-  };
-  const off = disabled || field.readonly;
   return (
-    <span
-      className="color-input"
-      ref={colorRef}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape' && paletteOpen) {
-          e.stopPropagation();
-          setPaletteOpen(false);
-        }
-      }}
-    >
+    <span className="color-input" ref={popupRef} onKeyDown={closeOnEscape}>
       {input}
       <button
+        ref={toggleRef}
         type="button"
         className={`color-swatch${isCssColor(local) ? '' : ' empty'}`}
         style={isCssColor(local) ? { background: local.trim() } : undefined}
@@ -183,10 +260,7 @@ export function FieldInput({ field, disabled, build, historyLabel, className }: 
               title={c}
               aria-label={c}
               aria-pressed={toHex(local) === c}
-              onClick={() => {
-                pick(c);
-                setPaletteOpen(false);
-              }}
+              onClick={() => pick(c)}
             />
           ))}
           {/* 外側の行が label なので、ここは label にしない（label の入れ子は不正） */}

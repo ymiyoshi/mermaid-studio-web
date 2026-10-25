@@ -211,10 +211,61 @@ export const META_SHAPES: { name: string; label: string }[] = [
   { name: 'bang', label: t('fc.meta.bang') },
 ];
 
-/** 新しい書き方の形の名前を、選択肢の値（括弧の形の名前か「@名前」）にする */
+/**
+ * mermaid が受け付ける形の別名と、その正式な名前（mermaid 12.2 の shapes の aliases）。
+ * 別名で書いたノードも、選択肢の同じ形として扱う（今の形が選択肢に無い・図形が出ない、とならないように）
+ */
+const META_ALIASES: Record<string, string> = {
+  proc: 'rect', process: 'rect', rectangle: 'rect',
+  event: 'rounded',
+  terminal: 'stadium', pill: 'stadium',
+  subprocess: 'fr-rect', subproc: 'fr-rect', 'framed-rectangle': 'fr-rect', subroutine: 'fr-rect',
+  db: 'cyl', database: 'cyl', cylinder: 'cyl',
+  'data-store': 'datastore',
+  directory: 'folder',
+  circ: 'circle',
+  decision: 'diam', diamond: 'diam', question: 'diam',
+  hexagon: 'hex', prepare: 'hex',
+  'lean-right': 'lean-r', 'in-out': 'lean-r',
+  'lean-left': 'lean-l', 'out-in': 'lean-l',
+  priority: 'trap-b', 'trapezoid-bottom': 'trap-b', trapezoid: 'trap-b',
+  manual: 'trap-t', 'trapezoid-top': 'trap-t', 'inv-trapezoid': 'trap-t',
+  'double-circle': 'dbl-circ',
+  card: 'notch-rect', 'notched-rectangle': 'notch-rect',
+  'lined-rectangle': 'lin-rect', 'lined-process': 'lin-rect', 'lin-proc': 'lin-rect', 'shaded-process': 'lin-rect',
+  start: 'sm-circ', 'small-circle': 'sm-circ',
+  stop: 'fr-circ', 'framed-circle': 'fr-circ',
+  join: 'fork',
+  collate: 'hourglass',
+  comment: 'brace', 'brace-l': 'brace',
+  'com-link': 'bolt', 'lightning-bolt': 'bolt',
+  document: 'doc',
+  'half-rounded-rectangle': 'delay',
+  das: 'h-cyl', 'horizontal-cylinder': 'h-cyl',
+  disk: 'lin-cyl', 'lined-cylinder': 'lin-cyl',
+  'curved-trapezoid': 'curv-trap', display: 'curv-trap',
+  'div-proc': 'div-rect', 'divided-rectangle': 'div-rect', 'divided-process': 'div-rect',
+  extract: 'tri', triangle: 'tri',
+  'internal-storage': 'win-pane', 'window-pane': 'win-pane',
+  junction: 'f-circ', 'filled-circle': 'f-circ',
+  'loop-limit': 'notch-pent', 'notched-pentagon': 'notch-pent',
+  'manual-file': 'flip-tri', 'flipped-triangle': 'flip-tri',
+  'manual-input': 'sl-rect', 'sloped-rectangle': 'sl-rect',
+  documents: 'docs', 'st-doc': 'docs', 'stacked-document': 'docs',
+  procs: 'st-rect', processes: 'st-rect', 'stacked-rectangle': 'st-rect',
+  'stored-data': 'bow-rect', 'bow-tie-rectangle': 'bow-rect',
+  summary: 'cross-circ', 'crossed-circle': 'cross-circ',
+  'tagged-document': 'tag-doc',
+  'tagged-rectangle': 'tag-rect', 'tag-proc': 'tag-rect', 'tagged-process': 'tag-rect',
+  'paper-tape': 'flag',
+  'lined-document': 'lin-doc',
+};
+
+/** 新しい書き方の形の名前（別名も可）を、選択肢の値（括弧の形の名前か「@名前」）にする */
 export function metaShapeValue(name: string): string {
-  const classic = Object.entries(CLASSIC_TO_META).find(([, v]) => v === name);
-  return classic ? classic[0] : `@${name}`;
+  const canonical = META_ALIASES[name] ?? name;
+  const classic = Object.entries(CLASSIC_TO_META).find(([, v]) => v === canonical);
+  return classic ? classic[0] : `@${canonical}`;
 }
 
 export function shapeName(shape: Shape): string {
