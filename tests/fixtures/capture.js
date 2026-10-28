@@ -108,6 +108,70 @@ async () => {
   W->>N: 作成
   destroy N
   W->>N: 破棄`,
+    'ishikawa-full': `ishikawa-beta
+%% 上側の要因は、子を逆順に描く
+遅配
+    車両
+        古いトラック
+            故障が多い
+        GPS が古い
+    方法
+        手作業の配車
+    人
+        夜勤の<br>教育不足
+    天候`,
+    'treeview-full': `treeView-beta
+    title 構成
+    "my project/"
+        src/ :::highlight
+            index.ts icon(mdi:language-typescript) ## 入口
+            'utils file.ts'
+        README.md icon()`,
+    'venn-full': `venn-beta
+  set A["一"]
+    text a1["メモ"]
+  set B
+  set C["三"]
+  union A,B,C["全部"]
+  style A fill:#ff6b6b`,
+    'railroad-call': `railroad-beta
+number = sequence(optional(terminal("-")), oneOrMore(nonterminal("digit")));
+digit = choice(terminal("0"), terminal("1"), special("any digit"));`,
+    'railroad-abnf': `railroad-abnf-beta
+number = [ "-" ] 1*DIGIT;
+DIGIT = %x30-39;`,
+    'railroad-peg': `railroad-peg-beta
+Expr <- Term (("+" / "-") Term)*;
+Term <- "0" / "1";`,
+    packet: `packet
+title パケット
+0-15: "送信元ポート"
+16-31: "宛先ポート"
+32-63: "シーケンス番号"`,
+    radar: `radar-beta
+title 技術
+axis a["設計"], b["実装"], c["試験"]
+curve x["田中"]{4, 3, 5}
+curve y["鈴木"]{2, 5, 3}`,
+    treemap: `treemap-beta
+"製品"
+    "アプリ": 30
+    "サーバー": 20
+"サービス"
+    "保守": 15`,
+    'wardley-full': `wardley-beta
+title Tea Shop
+anchor Business [0.95, 0.63]
+component Cup of Tea [0.79, 0.61] label [19, -4]
+component Kettle [0.43, 0.35] (build) inertia
+component "Power Supply" [0.10, 0.70]
+pipeline Kettle {
+  component Electric Kettle [0.60]
+}
+Business -> Cup of Tea
+Cup of Tea -> Kettle; boil
+Kettle -.-> "Power Supply"
+note "Standard power" [0.30, 0.49]`,
   };
   const out = {};
   const all = { ...Object.fromEntries(TEMPLATES.filter((t) => t.text).map((t) => [t.id, t.text])), ...extra };

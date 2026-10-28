@@ -3,6 +3,7 @@
 export const ja = {
   'data.none': '（なし）',
   'data.title': 'タイトル',
+  'data.action.addAfter': '＋ 次の行',
   'data.name': '名前',
   'data.label': 'ラベル',
   'data.value': '値',
@@ -83,6 +84,7 @@ export const ja = {
 export const en: Record<keyof typeof ja, string> = {
   'data.none': '(none)',
   'data.title': 'Title',
+  'data.action.addAfter': '+ Next row',
   'data.name': 'Name',
   'data.label': 'Label',
   'data.value': 'Value',

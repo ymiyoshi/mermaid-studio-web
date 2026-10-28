@@ -43,6 +43,21 @@ const KIND_LABEL: Record<string, string> = {
   service: t('misc.kind.service'),
   group: t('misc.kind.group'),
   junction: t('misc.kind.junction'),
+  row: t('misc.kind.row'),
+  effect: t('misc.kind.effect'),
+  cause: t('misc.kind.cause'),
+  entry: t('misc.kind.entry'),
+  anchor: t('misc.kind.anchor'),
+  component: t('misc.kind.component'),
+  link: t('misc.kind.link'),
+  pipeline: t('misc.kind.pipeline'),
+  frame: t('misc.kind.frame'),
+  set: t('misc.kind.set'),
+  union: t('misc.kind.union'),
+  vtext: t('misc.kind.vtext'),
+  domain: t('misc.kind.domain'),
+  rule: t('misc.kind.rule'),
+  term: t('misc.kind.term'),
 };
 
 // 図ビューはパンやドラッグのたびに描き直されるので、props が変わらないときは描き直さない

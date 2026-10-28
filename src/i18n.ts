@@ -3,6 +3,12 @@ import * as sequenceLocale from './locales/sequence';
 import * as dataLocale from './locales/data';
 import * as graphLocale from './locales/graph';
 import * as miscLocale from './locales/misc';
+import * as betaLocale from './locales/beta';
+import * as vennLocale from './locales/venn';
+import * as cynefinLocale from './locales/cynefin';
+import * as wardleyLocale from './locales/wardley';
+import * as eventmodelingLocale from './locales/eventmodeling';
+import * as railroadLocale from './locales/railroad';
 import { EN_CORE } from './locales/coreEn';
 
 // i18n（設計書 §10）。日本語と英語。画面の文言はここ、図種プラグインの文言は src/locales/ の分野ごとの辞書に置く。
@@ -272,7 +278,20 @@ const core = {
   'storage.notPersisted': '永続ストレージが許可されていません。ブラウザがデータを消去する可能性があります。',
 } as const;
 
-const ja = { ...core, ...flowchartLocale.ja, ...sequenceLocale.ja, ...dataLocale.ja, ...graphLocale.ja, ...miscLocale.ja };
+const ja = {
+  ...core,
+  ...flowchartLocale.ja,
+  ...sequenceLocale.ja,
+  ...dataLocale.ja,
+  ...graphLocale.ja,
+  ...miscLocale.ja,
+  ...betaLocale.ja,
+  ...vennLocale.ja,
+  ...cynefinLocale.ja,
+  ...wardleyLocale.ja,
+  ...eventmodelingLocale.ja,
+  ...railroadLocale.ja,
+};
 
 export type MessageKey = keyof typeof ja;
 
@@ -280,7 +299,20 @@ export type CoreKey = keyof typeof core;
 
 const coreEn: Record<CoreKey, string> = EN_CORE;
 
-const en: Record<MessageKey, string> = { ...coreEn, ...flowchartLocale.en, ...sequenceLocale.en, ...dataLocale.en, ...graphLocale.en, ...miscLocale.en };
+const en: Record<MessageKey, string> = {
+  ...coreEn,
+  ...flowchartLocale.en,
+  ...sequenceLocale.en,
+  ...dataLocale.en,
+  ...graphLocale.en,
+  ...miscLocale.en,
+  ...betaLocale.en,
+  ...vennLocale.en,
+  ...cynefinLocale.en,
+  ...wardleyLocale.en,
+  ...eventmodelingLocale.en,
+  ...railroadLocale.en,
+};
 
 export function t(key: MessageKey, params?: Record<string, string>): string {
   let s: string = (lang === 'en' ? en : ja)[key];

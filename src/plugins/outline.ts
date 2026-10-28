@@ -104,3 +104,13 @@ export function subtreeLineIndexes(node: OutlineNode): Set<number> {
   walk(node);
   return out;
 }
+
+/** moveSibling の後のノードの番号（番号で指す要素を、動かした後も選び続けるため）。動かせなければ null */
+export function movedIndex(node: OutlineNode, dir: -1 | 1): number | null {
+  const other = node.siblings[node.siblings.indexOf(node) + dir];
+  if (!other) return null;
+  if (dir < 0) return other.index;
+  let last = other;
+  while (last.children.length) last = last.children[last.children.length - 1];
+  return node.index + (last.index - other.index + 1);
+}

@@ -1,5 +1,5 @@
 import type { ChangeSpec } from '@codemirror/state';
-import { bodyLines, indentOf, insertLineAfter, isComment, tokenRegex, type SourceLine } from './source';
+import { bodyLines, indentOf, insertLineAfter, isComment, splitLines, tokenRegex, type SourceLine } from './source';
 
 // 行単位の図種（class / state / ER など）で共通に使う書き換え。
 
@@ -11,6 +11,20 @@ export function removeLine(source: string, line: SourceLine): ChangeSpec {
 /** 複数行（from 行から to 行まで）を消す変更 */
 export function removeLines(source: string, first: SourceLine, last: SourceLine): ChangeSpec {
   return last.to < source.length ? { from: first.from, to: last.to + 1 } : { from: Math.max(0, first.from - 1), to: last.to };
+}
+
+/** 行番号の集まりの行をまとめて消す変更（隣り合う行は 1 つの範囲にまとめる。最後の行を消すときに、前の行の改行を消す変更と重ならないように） */
+export function removeLineSet(source: string, indices: Set<number>): ChangeSpec[] {
+  const lines = splitLines(source);
+  const out: ChangeSpec[] = [];
+  const sorted = [...indices].sort((a, b) => a - b);
+  for (let i = 0; i < sorted.length; ) {
+    let j = i;
+    while (j + 1 < sorted.length && sorted[j + 1] === sorted[j] + 1) j++;
+    out.push(removeLines(source, lines[sorted[i]], lines[sorted[j]]));
+    i = j + 1;
+  }
+  return out;
 }
 
 /** 文の「頭」（: より前、引用符の外）だけを返す。: の後ろはラベルや説明なので ID の書き換えの対象にしない */

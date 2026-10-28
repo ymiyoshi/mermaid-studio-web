@@ -136,6 +136,15 @@ describe('形・矢印・ラベル・向き', () => {
     expect(out.startsWith('graph RL\n')).toBe(true);
     await valid(out);
   });
+
+  it('flowchart-elk（ELK で配置するフローチャート）も同じように読み、向きを変えられる', async () => {
+    const elk = 'flowchart-elk TD\n  A --> B';
+    expect(getDirection(elk)).toBe('TD');
+    const out = apply(elk, setDirection(elk, 'LR'));
+    expect(out).toBe('flowchart-elk LR\n  A --> B');
+    await valid(out);
+    expect(parseFlowchart(out).statements.length).toBeGreaterThan(0);
+  });
 });
 
 describe('ID の変更', () => {

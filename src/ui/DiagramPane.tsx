@@ -150,7 +150,9 @@ export function DiagramPane() {
       );
       if (added) {
         scrollIntoView(added.el);
-        startLabelEdit(added);
+        // 図の上で書き換えられるラベルが無い要素（Git グラフのコミットの点など）は、選ぶだけにする（「特定できない」と知らせない）
+        if (added.range || added.insertAt) startLabelEdit(added);
+        else setSelectedKey(keyOf(added));
       }
     }
     // 図の種類が変わったとき（文書を開いたときなど）は全体表示にする

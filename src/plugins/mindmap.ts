@@ -2,7 +2,7 @@ import type { ChangeSpec } from '@codemirror/state';
 import type { DiagramPlugin, DiagramTarget, PropertyField, SourceRange } from './types';
 import { labelText, withGeneric } from './generic';
 import { indentOf, uniqueId } from './source';
-import { addChild, addSibling, deleteSubtree, moveSibling, parseOutline, type OutlineNode } from './outline';
+import { addChild, addSibling, deleteSubtree, movedIndex, moveSibling, parseOutline, type OutlineNode } from './outline';
 import { t } from '../i18n';
 
 // mindmap のプラグイン（設計書 §7.3 Phase 3）。
@@ -168,7 +168,7 @@ export const mindmapPlugin: DiagramPlugin = {
       run(source, [ref]) {
         const m = mindNodes(source)[Number(ref.id)];
         const change = m && moveSibling(source, m.node, -1);
-        return change ? { change, label: t('mm.history.moveUp') } : null;
+        return change ? { change, label: t('mm.history.moveUp'), select: { kind: 'topic', id: String(movedIndex(m.node, -1)) } } : null;
       },
     },
     {
@@ -179,7 +179,7 @@ export const mindmapPlugin: DiagramPlugin = {
       run(source, [ref]) {
         const m = mindNodes(source)[Number(ref.id)];
         const change = m && moveSibling(source, m.node, 1);
-        return change ? { change, label: t('mm.history.moveDown') } : null;
+        return change ? { change, label: t('mm.history.moveDown'), select: { kind: 'topic', id: String(movedIndex(m.node, 1)) } } : null;
       },
     },
     {
