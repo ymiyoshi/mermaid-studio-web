@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { ChangeSet, Text, type ChangeSpec } from '@codemirror/state';
 import fixtures from './fixtures/rendered-svg.json';
-import { architecturePlugin, parseArchitecture } from '../src/plugins/architecture';
+import { archLayout, architecturePlugin, parseArchitecture } from '../src/plugins/architecture';
 import { pluginFor } from '../src/plugins/registry';
 import { validate } from '../src/render/mermaid';
 import type { DiagramTarget, ElementRef } from '../src/plugins/types';
@@ -115,6 +115,27 @@ describe('図からの操作', () => {
     // 線が無い図では、宣言の次に線も足す
     const src = 'architecture-beta\n    service a(server)[A]\n';
     expect(await apply(src, run('add-next', src, [service('a')])!.change)).toBe('architecture-beta\n    service a(server)[A]\n    service svc1(server)[新しいサービス]\n    a:R -- L:svc1\n');
+  });
+
+  it('次のサービスは、mermaid の配置で空いている升目に向かう辺でつなぐ（重ならない）', async () => {
+    // server の右（R）には db があるので、右へ足すと db と同じ升目に重なる
+    const src = 'architecture-beta\n    group api(cloud)[API]\n    service db(database)[データベース] in api\n    service server(server)[サーバー] in api\n    db:L -- R:server\n';
+    const out = await apply(src, run('add-next', src, [service('server')])!.change);
+    expect(out).toContain('    server:B -- T:svc1\n');
+    const { pos } = archLayout(parseArchitecture(out));
+    const cells = [...pos.values()].map((c) => c.join(','));
+    expect(new Set(cells).size).toBe(cells.length);
+    // 続けて足しても重ならない
+    const out2 = await apply(out, run('add-next', out, [service('server')])!.change);
+    const cells2 = [...archLayout(parseArchitecture(out2)).pos.values()].map((c) => c.join(','));
+    expect(new Set(cells2).size).toBe(cells2.length);
+  });
+
+  it('同じつながりの 2 つをつなぐときは、今の位置の向きの辺を使う', async () => {
+    const src = 'architecture-beta\n    service a(server)[A]\n    service b(server)[B]\n    service c(server)[C]\n    a:R -- L:b\n    b:B -- T:c\n';
+    // c は a の右下。横の差と縦の差が同じなら横（R）でつなぐ
+    expect(await apply(src, run('connect', src, [service('a'), service('c')])!.change)).toContain('    a:R -- L:c\n');
+    expect(await apply(src, run('connect', src, [service('c'), service('b')])!.change)).toContain('    c:T -- B:b\n');
   });
 
   it('グループの中にサービスを足す', async () => {
