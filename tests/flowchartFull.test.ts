@@ -283,24 +283,24 @@ describe('flowchart: サブグラフ', () => {
     await expect(mermaid.parse(add.after)).resolves.toBeTruthy();
   });
 
-  it('図の上の「＋」でも形を選んで足せる（次のノード・サブグラフの中・エッジの間。どの形も mermaid.parse を通る）', async () => {
-    const cases: [string, { kind: string; id: string }][] = [
-      ['add-child', { kind: 'node', id: 'A' }],
-      ['add-inside', { kind: 'subgraph', id: 'S1' }],
-      ['insert-node', { kind: 'edge', id: '1' }],
-    ];
-    for (const [id, ref] of cases) {
-      const shapes = flowchartPlugin.actions!.find((a) => a.id === id)!.shapes!;
-      expect(shapes.map((x) => x.value)).toEqual(expect.arrayContaining(['rect', 'rhombus', '@doc']));
-      for (const { value } of shapes) {
-        const r = run(id, SRC, [ref], value)!;
-        expect(r.focus).toEqual({ kind: 'node', id: 'N1' });
-        expect(r.after.slice(r.selAfter!.anchor, r.selAfter!.head), `${id} ${value}`).toBe('新しいノード');
-        await expect(mermaid.parse(r.after), `${id} ${value}`).resolves.toBeTruthy();
-      }
-      expect(run(id, SRC, [ref], 'no-such-shape')).toBeNull();
+  // 形の数（50 余り）だけ mermaid.parse を呼ぶので、操作ごとに分ける（遅い CI でも 1 件の時間に収まるように）
+  it.each([
+    ['add-child', { kind: 'node', id: 'A' }],
+    ['add-inside', { kind: 'subgraph', id: 'S1' }],
+    ['insert-node', { kind: 'edge', id: '1' }],
+  ] as const)('図の上の「＋」でも形を選んで足せる: %s（どの形も mermaid.parse を通る）', async (id, ref) => {
+    const shapes = flowchartPlugin.actions!.find((a) => a.id === id)!.shapes!;
+    expect(shapes.map((x) => x.value)).toEqual(expect.arrayContaining(['rect', 'rhombus', '@doc']));
+    for (const { value } of shapes) {
+      const r = run(id, SRC, [ref], value)!;
+      expect(r.focus).toEqual({ kind: 'node', id: 'N1' });
+      expect(r.after.slice(r.selAfter!.anchor, r.selAfter!.head), `${id} ${value}`).toBe('新しいノード');
+      await expect(mermaid.parse(r.after), `${id} ${value}`).resolves.toBeTruthy();
     }
-    // 形と、つながり・所属が mermaid にそのまま読まれる
+    expect(run(id, SRC, [ref], 'no-such-shape')).toBeNull();
+  });
+
+  it('図の上の「＋」で選んだ形と、つながり・所属が mermaid にそのまま読まれる', async () => {
     const child = run('add-child', SRC, [{ kind: 'node', id: 'A' }], 'rhombus')!;
     expect((await db(child.after)).getVertices().get('N1')?.type).toBe('diamond');
     expect((await db(child.after)).getEdges()).toContainEqual(expect.objectContaining({ start: 'A', end: 'N1' }));
