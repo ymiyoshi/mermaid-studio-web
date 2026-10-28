@@ -1,13 +1,16 @@
+import type { ChangeSpec } from '@codemirror/state';
 import { t } from '../i18n';
-import type { DiagramAction, DiagramPlugin, DiagramTarget, ElementRef, PropertyField } from './types';
+import type { ActionResult, DiagramAction, DiagramPlugin, DiagramTarget, ElementRef, PropertyField, ReorderSpec } from './types';
 import { matchInOrder } from './svg';
-import { bodyLines } from './source';
+import { applySpec, bodyLines, lastParse } from './source';
 import { genericTargets } from './generic';
 import { keywordFields, setKeyword, type KeywordSpec } from './keywordLine';
 import {
   addRow,
   deleteRow,
   moveRow,
+  moveRowInto,
+  moveRowTo,
   quoteSafe,
   regexParser,
   rowScope,
@@ -43,8 +46,9 @@ function rx(
   format: (v: Record<string, string>) => string,
   defaults: Record<string, string>,
   encode?: RowSchema['encode'],
+  drag?: RowSchema['drag'],
 ): RowSchema {
-  return { kind, title, fields, parse: regexParser(re), format, defaults, encode };
+  return { kind, title, fields, parse: regexParser(re), format, defaults, encode, drag };
 }
 
 const quoted = (_f: string, v: string) => quoteSafe(v);
@@ -124,6 +128,66 @@ function rowActions(tables: TableDef[]): DiagramAction[] {
       },
     },
   ];
+}
+
+/** 図の上のドラッグでの、行の動かし方（rowActions の上下の入れ替えを、離れた行の前後・入れ子の中・座標へ広げたもの） */
+function rowReorder(tables: TableDef[]): ReorderSpec {
+  const drag = (row: TableRow, source: string) => {
+    if (row.schema.appendOnly) return null;
+    const d = typeof row.schema.drag === 'function' ? row.schema.drag(source) : row.schema.drag;
+    return d === undefined ? 'y' : d || null;
+  };
+  // 入れ子の行（treemap）が無い図種は、中へは落とさない
+  const nested = tables.some((table) => table.schemas.some((s) => s.nested));
+  // ドラッグを始めるとき、候補の行ごとに表を読み直さない
+  const rowsOf = lastParse((source: string) => allRows(source, tables));
+  const find = (source: string, ref: ElementRef) => (ref.kind === ROW ? (rowsOf(source).find((x) => String(x.row.line.index + 1) === ref.id) ?? null) : null);
+  // 動かした後の行を選び続ける（行番号で指すので、動かした最初の行の位置から求める）
+  const done = (source: string, row: TableRow, r: { change: ChangeSpec[]; at: number } | null): ActionResult | null =>
+    r && { change: r.change, label: t('table.move', { kind: row.schema.title }), select: { kind: ROW, id: String(applySpec(source, r.change).slice(0, r.at).split('\n').length) } };
+  // 同じ表の 2 つの行（表をまたいでは動かさない）。後ろの行が頼っている行（branch の前のただ 1 つのコミット）は、消せないのと同じく動かさない
+  const pair = (source: string, a: ElementRef, b: ElementRef) => {
+    const x = find(source, a);
+    if (!x || !drag(x.row, source) || x.row.schema.canDelete?.(x.row, x.rows) === false) return null;
+    const target = b.kind === ROW ? x.rows.find((r) => String(r.line.index + 1) === b.id) : undefined;
+    return target && target !== x.row ? { rows: x.rows, row: x.row, target } : null;
+  };
+  return {
+    axis(source, ref) {
+      const found = find(source, ref);
+      return found && found.row.schema.canDelete?.(found.row, found.rows) !== false ? drag(found.row, source) : null;
+    },
+    // 属する行を持つ行（section・timeline の期間）は、同じ種類の行の前後にだけ落とせる（moveRowTo と同じ決まり）
+    accepts(ref, target, source) {
+      const p = pair(source, ref, target);
+      return !!p && !(p.row.schema.owns && p.target.schema.kind !== p.row.schema.kind);
+    },
+    move(source, ref, target, before) {
+      const p = pair(source, ref, target);
+      if (!p) return null;
+      const flip = p.row.schema.reversed?.(source) ?? false;
+      return done(source, p.row, moveRowTo(source, p.rows, p.row, p.target, flip ? !before : before));
+    },
+    acceptsInto(source, ref, container) {
+      if (!nested) return false;
+      const p = container && pair(source, ref, container);
+      return !!p && !!p.row.schema.nested && !!p.target.schema.nested;
+    },
+    into(source, ref, container) {
+      const p = container && pair(source, ref, container);
+      return p ? done(source, p.row, moveRowInto(source, p.rows, p.row, p.target)) : null;
+    },
+    place(source, ref, svg, by) {
+      const found = find(source, ref);
+      const values = found?.row.schema.place?.(found.row, svg, by);
+      if (!found || !values) return null;
+      // 値の変わらない欄（横にだけ動かしたときの y など）は、書き方も変えない
+      const change = Object.entries(values)
+        .filter(([field, v]) => Number(v) !== Number(found.row.values[field]))
+        .map(([field, v]) => setCell(found.row, field, v));
+      return change.length ? { change, label: t('table.move', { kind: found.row.schema.title }), select: ref } : null;
+    },
+  };
 }
 
 function rowFields({ row }: FoundRow): PropertyField[] {
@@ -210,6 +274,7 @@ export function dataPlugin(type: string, keywords: KeywordSpec[], tables: TableD
       return spec ? setKeyword(source, spec, value) : null;
     },
     actions: rowActions(tables),
+    reorder: rowReorder(tables),
     tables,
   };
 }
@@ -320,7 +385,7 @@ export const timelinePlugin = dataPlugin(
       id: 'events',
       title: t('data.timeline.events'),
       schemas: [
-        SECTION,
+        { ...SECTION, drag: 'x' },
         {
           ...rx(
             'period',
@@ -332,6 +397,7 @@ export const timelinePlugin = dataPlugin(
           ),
           // 「: 出来事」の続きの行は、前の期間に属する
           owns: ['event'],
+          drag: 'x',
         },
         rx('event', t('data.timeline.continued'), /^:\s*(?<event>.+?)\s*$/d, [text('event', t('data.timeline.event'))], (v) => `: ${v.event}`, {
           event: t('data.timeline.event'),
@@ -341,6 +407,11 @@ export const timelinePlugin = dataPlugin(
   ],
 );
 
+/** gitGraph の向き（宣言行の LR・TB・BT。無ければ LR） */
+function gitOrientation(source: string): 'LR' | 'TB' | 'BT' {
+  return (bodyLines(source).header?.text.match(/^\s*gitGraph\s+(LR|TB|BT)\b/)?.[1] as 'TB' | 'BT' | undefined) ?? 'LR';
+}
+
 export const journeyPlugin = dataPlugin(
   'journey',
   [TITLE],
@@ -349,15 +420,18 @@ export const journeyPlugin = dataPlugin(
       id: 'tasks',
       title: t('data.task'),
       schemas: [
-        SECTION,
-        rx(
-          'task',
-          t('data.task'),
-          /^(?<name>[^:]+?)\s*:\s*(?<score>\d+)\s*:\s*(?<actors>.*?)\s*$/d,
-          [text('name', t('data.name'), { width: 1.5 }), select('score', t('data.journey.score'), ['1', '2', '3', '4', '5'], { width: 0.6 }), text('actors', t('data.journey.actors'))],
-          (v) => `${v.name}: ${v.score}: ${v.actors}`,
-          { name: t('data.task.new'), score: '3', actors: t('data.journey.actor.default') },
-        ),
+        { ...SECTION, drag: 'x' },
+        {
+          ...rx(
+            'task',
+            t('data.task'),
+            /^(?<name>[^:]+?)\s*:\s*(?<score>\d+)\s*:\s*(?<actors>.*?)\s*$/d,
+            [text('name', t('data.name'), { width: 1.5 }), select('score', t('data.journey.score'), ['1', '2', '3', '4', '5'], { width: 0.6 }), text('actors', t('data.journey.actors'))],
+            (v) => `${v.name}: ${v.score}: ${v.actors}`,
+            { name: t('data.task.new'), score: '3', actors: t('data.journey.actor.default') },
+          ),
+          drag: 'x',
+        },
       ],
     },
   ],
@@ -414,6 +488,9 @@ export const gitGraphPlugin = dataPlugin(
             { name: 'type', quoted: false },
           ]),
           format: (v) => `commit${gitAttrs(v)}`,
+          // 縦向き（TB・BT）では、コミットは上下に並ぶ。BT は下から上へ
+          drag: (source) => (gitOrientation(source) === 'LR' ? 'x' : 'y'),
+          reversed: (source) => gitOrientation(source) === 'BT',
           // branch より前にコミットが 1 つも無いと、branch が読めない（最初の branch の前のただ 1 つのコミットは消さない）
           canDelete: (row, rows) => {
             const branch = rows.findIndex((r) => r.schema.kind === 'branch');
@@ -429,6 +506,7 @@ export const gitGraphPlugin = dataPlugin(
           parse: gitParser(/^branch\s+([^\s]+)/d, [], true),
           // 後ろの checkout・merge が、このブランチに頼っている
           canDelete: () => false,
+          drag: false,
           format: (v) => `branch ${v.name}`,
           defaults: { name: 'feature' },
         },
@@ -439,6 +517,7 @@ export const gitGraphPlugin = dataPlugin(
           parse: gitParser(/^(?:checkout|switch)\s+([^\s]+)/d, [], true),
           // 消すと、後ろの commit・merge が別のブランチに付く（merge が自分自身になって壊れることがある）
           canDelete: () => false,
+          drag: false,
           format: (v) => `checkout ${v.name}`,
           defaults: { name: 'main' },
         },
@@ -448,6 +527,7 @@ export const gitGraphPlugin = dataPlugin(
           fields: [text('name', t('data.git.branch')), text('tag', t('data.tag'), { optional: true })],
           parse: gitParser(/^merge\s+([^\s]+)/d, [{ name: 'tag', quoted: true }], true),
           format: (v) => `merge ${v.name}${v.tag ? ` tag: "${v.tag}"` : ''}`,
+          drag: false,
           defaults: { name: 'feature', tag: '' },
         },
       ],
@@ -476,6 +556,21 @@ function matchCommits(svg: SVGSVGElement, rows: TableRow[]) {
 
 // ---- quadrantChart / xychart --------------------------------------------
 
+/** 0〜1 に収め、小数 2 桁にする */
+const unit = (v: number) => String(Math.round(Math.min(1, Math.max(0, v)) * 100) / 100);
+
+/** quadrantChart の点を、SVG の座標で by だけ動かした値。描く範囲は 4 つの象限の四角を合わせた範囲（y は上が 1） */
+function placeQuadrantPoint(row: TableRow, svg: SVGSVGElement, by: { x: number; y: number }): Record<string, string> | null {
+  const rects = [...svg.querySelectorAll('g.quadrants rect')].map((r) => ['x', 'y', 'width', 'height'].map((a) => Number(r.getAttribute(a))));
+  if (rects.length === 0 || rects.some((r) => r.some((v) => !Number.isFinite(v)))) return null;
+  const left = Math.min(...rects.map(([x]) => x));
+  const top = Math.min(...rects.map(([, y]) => y));
+  const width = Math.max(...rects.map(([x, , w]) => x + w)) - left;
+  const height = Math.max(...rects.map(([, y, , h]) => y + h)) - top;
+  if (width <= 0 || height <= 0) return null;
+  return { x: unit(Number(row.values.x) + by.x / width), y: unit(Number(row.values.y) - by.y / height) };
+}
+
 export const quadrantPlugin = dataPlugin(
   'quadrantChart',
   [
@@ -492,17 +587,30 @@ export const quadrantPlugin = dataPlugin(
       id: 'points',
       title: t('data.quadrant.point'),
       schemas: [
-        rx(
-          'point',
-          t('data.quadrant.point'),
-          /^(?<name>[^:]+?)\s*:\s*\[\s*(?<x>[\d.]+)\s*,\s*(?<y>[\d.]+)\s*\](?<style>.*?)\s*$/d,
-          [text('name', t('data.name'), { width: 1.5 }), num('x', t('data.quadrant.x01')), num('y', t('data.quadrant.y01'))],
-          (v) => `${v.name}: [${v.x}, ${v.y}]${v.style ?? ''}`,
-          { name: t('data.quadrant.point.new'), x: '0.5', y: '0.5', style: '' },
-        ),
+        {
+          ...rx(
+            'point',
+            t('data.quadrant.point'),
+            /^(?<name>[^:]+?)\s*:\s*\[\s*(?<x>[\d.]+)\s*,\s*(?<y>[\d.]+)\s*\](?<style>.*?)\s*$/d,
+            [text('name', t('data.name'), { width: 1.5 }), num('x', t('data.quadrant.x01')), num('y', t('data.quadrant.y01'))],
+            (v) => `${v.name}: [${v.x}, ${v.y}]${v.style ?? ''}`,
+            { name: t('data.quadrant.point.new'), x: '0.5', y: '0.5', style: '' },
+          ),
+          // 点の位置（0〜1）はそのまま Mermaid の書き方なので、ドラッグした位置に置く
+          drag: 'free',
+          place: placeQuadrantPoint,
+        },
       ],
     },
   ],
+  // 点（g.data-point の丸とラベル）は、ラベルの文字（名前）で行に対応付ける（描く順はソースの逆のことがある）。
+  // 丸も行の要素にして、丸をつかんでドラッグできるようにする
+  (svg, rows) =>
+    [...svg.querySelectorAll('g.data-point')].flatMap((g) => {
+      const name = g.querySelector('text')?.textContent?.trim();
+      const row = rows.find((r) => r.schema.kind === 'point' && r.values.name === name);
+      return row ? [{ el: g, row }] : [];
+    }),
 );
 
 export const xyPlugin = dataPlugin(
@@ -676,6 +784,7 @@ export const treemapPlugin = dataPlugin(
           ),
           // インデントで入れ子を表すので、深い後ろの行は子
           nested: true,
+          drag: 'xy',
         },
       ],
     },
@@ -717,6 +826,7 @@ export const c4Plugin = dataPlugin(
           (v) => `${v.fn}(${v.alias}, "${quoteSafe(v.label)}"${v.descr ? `, "${quoteSafe(v.descr)}"` : ''}${v.rest ?? ''})`,
           { fn: 'System', alias: 'sys1', label: t('data.c4.system.new'), descr: '', rest: '' },
           quoted,
+          'xy',
         ),
         rx(
           'rel',
@@ -731,6 +841,7 @@ export const c4Plugin = dataPlugin(
           (v) => `${v.fn}(${v.from}, ${v.to}, "${quoteSafe(v.label)}"${v.rest ?? ''})`,
           { fn: 'Rel', from: 'a', to: 'b', label: t('data.c4.rel.default'), rest: '' },
           quoted,
+          false,
         ),
       ],
     },
@@ -755,6 +866,7 @@ export const requirementPlugin = dataPlugin(
           block: true,
           format: (v) => `${v.type} ${v.name} {\n    id: ${v.name}\n    text: "${t('data.req.text.default')}"\n    risk: medium\n    verifymethod: test\n}`,
           defaults: { type: 'requirement', name: 'req1' },
+          drag: 'xy',
         },
         {
           kind: 'element',
@@ -764,6 +876,7 @@ export const requirementPlugin = dataPlugin(
           block: true,
           format: (v) => `element ${v.name} {\n    type: simulation\n}`,
           defaults: { name: 'element1' },
+          drag: 'xy',
         },
         rx(
           'relation',
@@ -772,6 +885,8 @@ export const requirementPlugin = dataPlugin(
           [text('a', t('data.from')), select('rel', t('data.req.relation'), ['contains', 'copies', 'derives', 'satisfies', 'verifies', 'refines', 'traces']), text('b', t('data.to'))],
           (v) => `${v.a} - ${v.rel} -> ${v.b}`,
           { a: 'element1', rel: 'satisfies', b: 'req1' },
+          undefined,
+          false,
         ),
       ],
     },
@@ -807,6 +922,8 @@ export const usecasePlugin = dataPlugin(
           [text('a', t('data.usecase.actor')), text('b', t('data.usecase.usecase'), { width: 2 })],
           (v) => `${v.a} --> ${v.b}`,
           { a: 'User', b: `"${t('data.usecase.usecase.new')}"` },
+          undefined,
+          false,
         ),
       ],
     },

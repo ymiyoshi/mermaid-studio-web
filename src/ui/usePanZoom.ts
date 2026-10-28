@@ -177,8 +177,9 @@ export function usePanZoom(viewport: RefObject<HTMLDivElement | null>, canvas: R
     if (dx || dy) setView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
   };
 
-  const beginDrag = (e: React.PointerEvent) => {
-    drag.current = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false };
+  /** from: パンを始める位置（要素を動かすドラッグからパンに切り替えるとき、押した位置から動かすため） */
+  const beginDrag = (e: React.PointerEvent, from: { x: number; y: number } = { x: e.clientX, y: e.clientY }) => {
+    drag.current = { x: from.x, y: from.y, vx: view.x, vy: view.y, moved: false };
     try {
       (e.currentTarget as Element).setPointerCapture(e.pointerId);
     } catch {

@@ -1,7 +1,7 @@
 import type { DiagramPlugin, DiagramTarget, PropertyField, SourceRange } from './types';
 import { labelText, withGeneric } from './generic';
 import { bodyLines, indentOf, insertLineAfter, uniqueId } from './source';
-import { addChild, deleteSubtree, moveSibling, parseOutline, type OutlineNode } from './outline';
+import { addChild, deleteSubtree, moveSibling, outlineReorder, parseOutline, type OutlineNode } from './outline';
 import { t } from '../i18n';
 
 // kanban のプラグイン（設計書 §7.3 Phase 4）。
@@ -132,4 +132,14 @@ export const kanbanPlugin: DiagramPlugin = {
       },
     },
   ],
+
+  // ドラッグ: 列は左右に、カードは上下に並べ替える（別の列のカードの前後・列の中へ落とすと、その列へ移す）
+  reorder: outlineReorder({
+    parse: (source) => kanbanItems(source).map((item) => Object.assign(item.node, { item })),
+    find: (nodes, ref) => nodes.find((n) => n.item.id === ref.id && n.item.kind === ref.kind),
+    axis: (n) => (n.item.kind === 'column' ? 'x' : 'y'),
+    accepts: (ref, target) => ref.kind === target.kind,
+    allowed: (n, target, place) => (place === 'into' ? n.item.kind === 'card' && target.item.kind === 'column' : n.item.kind === target.item.kind),
+    result: (n) => ({ label: t('kb.history.drag', { id: n.item.id }), select: { kind: n.item.kind, id: n.item.id } }),
+  }),
 };

@@ -412,6 +412,76 @@ test('シーケンス図: 参加者とメッセージをドラッグで並べ替
   expect((await historyLabels(page)).slice(-2)).toEqual(['参加者 S を移動', 'メッセージを移動']);
 });
 
+test('ドラッグで動かす: カンバンのカードを空の列へ・ノードをサブグラフへ・Wardley の部品と 4 象限図の点を置く', async ({ page }) => {
+  await openApp(page);
+  /** 図の種類が変わると次のフレームで全体表示にするので、要素の位置が止まるまで待つ */
+  const settled = async (selector: string) => {
+    let last = '';
+    await expect
+      .poll(async () => {
+        const box = JSON.stringify(await page.locator(selector).first().boundingBox());
+        const same = box === last;
+        last = box;
+        return same;
+      })
+      .toBe(true);
+  };
+  /** from の中心を押し、to の中の位置（割合）まで動かして離す。indicator は動かしている間に出る印 */
+  const dragTo = async (from: string, to: string, fx: number, fy: number, indicator: string) => {
+    await settled(from);
+    // 描いた図の要素がソースに対応付いてから押す（対応付く前に押すと、パンになる）
+    await expect(page.locator('.diagram-viewport')).toHaveClass(/editable/);
+    await expect.poll(() => page.locator(from).first().evaluate((el) => !!el.closest('.mmd-target'))).toBe(true);
+    const a = (await page.locator(from).first().boundingBox())!;
+    const b = (await page.locator(to).first().boundingBox())!;
+    await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(b.x + b.width * fx, b.y + b.height * fy, { steps: 8 });
+    await expect(page.locator(indicator)).toBeVisible();
+    await page.mouse.up();
+    await expect(page.locator(indicator)).toHaveCount(0);
+  };
+
+  // カンバン: カードを、カードの無い列の中へ（列の枠で示す）
+  await setEditorText(page, 'kanban\n  todo[やること]\n    c1[設計]\n    c2[実装]\n  doing[作業中]\n');
+  await dragTo('.diagram-canvas g.node[id$="-c1"]', '.diagram-canvas g.cluster[id$="-doing"]', 0.5, 0.6, '.drop-box');
+  await expect.poll(() => editorText(page)).toContain('kanban\n  todo[やること]\n    c2[実装]\n  doing[作業中]\n    c1[設計]');
+
+  // フローチャート: サブグラフの外のノードを、サブグラフの中（ノードの無いところ）へ
+  await setEditorText(page, 'flowchart LR\n  A[外] --> B[中]\n  subgraph S1 [枠]\n    direction LR\n    B\n    C[もう一つ]\n  end\n');
+  await dragTo('.diagram-canvas g.node[id*="-A-"]', '.diagram-canvas g.cluster', 0.5, 0.15, '.drop-box');
+  // A はエッジの行で定義しているので、サブグラフの中に A の行を足す（プロパティパネルの「所属するサブグラフ」と同じ）
+  await expect.poll(() => editorText(page)).toMatch(/subgraph S1 \[枠\][\s\S]*\n\s+A\n\s+end/);
+
+  // Wardley: 部品をドラッグした位置へ置く（座標を書き換える）
+  // 横に長い図なので、画面の幅によっては右側が履歴の欄の下に隠れる。部品は左寄りに置き、右へ動かす
+  await setEditorText(page, 'wardley-beta\ncomponent "茶葉" [0.50, 0.20]\n');
+  await page.getByRole('button', { name: '全体を表示' }).click();
+  await dragTo('.diagram-canvas g.wardley-node circle', '.diagram-canvas g.wardley-node circle', 5, 0.5, '.drop-box');
+  // 右へ動かしたので、進化（2 つ目）だけが大きくなる
+  await expect.poll(() => editorText(page)).not.toContain('[0.50, 0.20]');
+  const [, v, e] = /component "茶葉" \[([\d.]+), ([\d.]+)\]/.exec(await editorText(page))!;
+  expect(Math.abs(Number(v) - 0.5)).toBeLessThan(0.03);
+  expect(Number(e)).toBeGreaterThan(0.2);
+  expect((await historyLabels(page)).slice(-1)).toEqual(['茶葉 を動かす']);
+
+  // 4 象限図: 点の丸をつかんで、象限の幅の 2 割だけ右へ（x だけが約 0.2 増える）
+  await setEditorText(page, 'quadrantChart\n    x-axis 低 --> 高\n    y-axis 低 --> 高\n    機能A: [0.30, 0.80]\n');
+  await expect(page.locator('.diagram-viewport')).toHaveClass(/editable/);
+  await settled('.diagram-canvas g.data-point circle');
+  const dot = (await page.locator('.diagram-canvas g.data-point circle').first().boundingBox())!;
+  const area = (await page.locator('.diagram-canvas g.quadrants').boundingBox())!;
+  await page.mouse.move(dot.x + dot.width / 2, dot.y + dot.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(dot.x + dot.width / 2 + area.width * 0.2, dot.y + dot.height / 2, { steps: 8 });
+  await expect(page.locator('.drop-box')).toBeVisible();
+  await page.mouse.up();
+  await expect.poll(() => editorText(page)).not.toContain('[0.30, 0.80]');
+  const [, x, y] = /機能A: \[([\d.]+), ([\d.]+)\]/.exec(await editorText(page))!;
+  expect(Math.abs(Number(x) - 0.5)).toBeLessThan(0.03);
+  expect(Math.abs(Number(y) - 0.8)).toBeLessThan(0.03);
+});
+
 test('エディタで打つと、図の中の名前を補完できる', async ({ page }) => {
   await openApp(page);
   await setEditorText(page, 'flowchart LR\n  Kensaku[検索] --> B\n  ');

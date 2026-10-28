@@ -11,7 +11,7 @@ const apply = (source: string, spec: ChangeSpec) => ChangeSet.of(spec, source.le
 const reorder = sequencePlugin.reorder!;
 
 function move(source: string, kind: string, id: string, targetKind: string, targetId: string, before: boolean) {
-  const res = reorder.move(source, { kind, id }, { kind: targetKind, id: targetId }, before);
+  const res = reorder.move!(source, { kind, id }, { kind: targetKind, id: targetId }, before);
   return res && { ...res, after: apply(source, res.change) };
 }
 
@@ -129,9 +129,9 @@ describe('sequence: メッセージ・注釈・枠をドラッグで並べ替え
   });
 
   it('落とし先にできる要素の種類', () => {
-    expect(reorder.accepts({ kind: 'message', id: '0' }, { kind: 'block', id: '0' })).toBe(true);
-    expect(reorder.accepts({ kind: 'message', id: '0' }, { kind: 'participant', id: 'A' })).toBe(false);
-    expect(reorder.accepts({ kind: 'participant', id: 'A' }, { kind: 'message', id: '0' })).toBe(false);
+    expect(reorder.accepts!({ kind: 'message', id: '0' }, { kind: 'block', id: '0' }, SRC)).toBe(true);
+    expect(reorder.accepts!({ kind: 'message', id: '0' }, { kind: 'participant', id: 'A' }, SRC)).toBe(false);
+    expect(reorder.accepts!({ kind: 'participant', id: 'A' }, { kind: 'message', id: '0' }, SRC)).toBe(false);
     expect(reorder.axis(SRC, { kind: 'message', id: '0' })).toBe('y');
     expect(reorder.axis(SRC, { kind: 'section', id: '0:0' })).toBeNull();
   });

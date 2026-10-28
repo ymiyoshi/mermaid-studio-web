@@ -1,7 +1,7 @@
 import type { ChangeSpec } from '@codemirror/state';
 import { withValue, type DiagramPlugin, type DiagramTarget, type PropertyField, type SourceRange } from './types';
 import { labelText, withGeneric } from './generic';
-import { bodyLines, escapeRe, indentOf, insertLineAfter, isComment, uniqueId, type SourceLine } from './source';
+import { bodyLines, escapeRe, indentOf, insertLineAfter, isComment, lastParse, uniqueId, type SourceLine } from './source';
 import { removeLineSet } from './lineOps';
 import { addHitArea, matchInOrder } from './svg';
 import { keywordFields, setKeyword, type KeywordSpec } from './keywordLine';
@@ -358,6 +358,8 @@ const svgId = (el: Element) => el.id.replace(/^mmd-render-\d+-/, '');
 /** 新しいサービスの宣言（parent があればそのグループの中） */
 const serviceLine = (id: string, parent: string | null | undefined) => `service ${id}(server)[${NEW_SERVICE}]${parent ? ` in ${parent}` : ''}`;
 
+const parseArchitectureOnce = lastParse(parseArchitecture);
+
 export const architecturePlugin: DiagramPlugin = {
   type: 'architecture',
 
@@ -614,5 +616,30 @@ export const architecturePlugin: DiagramPlugin = {
       },
     },
   ],
+
+  // ドラッグ: サービス・junction・グループを、別のグループの中へ、または外へ移す（in の書き換え。位置は自動レイアウトのまま）
+  reorder: {
+    axis: (source, ref) => (parseArchitecture(source).nodes.some((n) => n.kind === ref.kind && n.id === ref.id) ? 'xy' : null),
+    acceptsInto(source, ref, container) {
+      const p = parseArchitectureOnce(source);
+      // 図の一番外へは、グループの中にある要素だけ（外にある要素は、外へ動かしても変わらない）
+      if (container === null) return !!p.nodes.find((x) => x.kind === ref.kind && x.id === ref.id)?.parent?.value;
+      // グループを自分の中のグループへは入れない
+      return container.kind === 'group' && (ref.kind !== 'group' || !groupTree(p, ref.id).has(container.id));
+    },
+    into(source, ref, container) {
+      const p = parseArchitecture(source);
+      const n = p.nodes.find((x) => x.kind === ref.kind && x.id === ref.id);
+      const to = container?.id ?? '';
+      if (!n || (n.parent?.value ?? '') === to) return null;
+      // 相手の端に {group} を付けた線（グループの枠へつなぐ線）は、両端が同じグループにあると書けない
+      const other = (e: (typeof p.edges)[number]) => (e.a === n.id ? e.b : e.a);
+      const parentOf = (id: string) => p.nodes.find((x) => x.id === id)?.parent?.value ?? '';
+      if (to && p.edges.some((e) => (e.a === n.id || e.b === n.id) && e.line.text.includes('{group}') && parentOf(other(e)) === to)) return null;
+      const change = architecturePlugin.setProperty!(source, ref, 'parent', to);
+      const label = to ? t('arch.history.moveInto', { id: ref.id, group: to }) : t('arch.history.moveOut', { id: ref.id });
+      return change && { change, label, select: ref };
+    },
+  },
 };
 

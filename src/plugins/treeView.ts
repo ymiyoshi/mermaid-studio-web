@@ -2,7 +2,7 @@ import type { ChangeSpec } from '@codemirror/state';
 import type { DiagramPlugin, DiagramTarget, PropertyField, SourceRange } from './types';
 import { labelText, withGeneric } from './generic';
 import { bodyLines } from './source';
-import { addChild, addSibling, deleteSubtree, movedIndex, moveSibling, type OutlineNode } from './outline';
+import { addChild, addSibling, deleteSubtree, movedIndex, moveSibling, outlineReorder, type OutlineNode } from './outline';
 import { keywordFields, setKeyword, type KeywordSpec } from './keywordLine';
 import { t } from '../i18n';
 
@@ -319,6 +319,19 @@ export const treeViewPlugin: DiagramPlugin = {
       },
     },
   ],
+
+  // ドラッグ: 項目の前後か、フォルダの真ん中（その中）へ部分木ごと動かす。罫線で書いた木は動かさない
+  reorder: outlineReorder({
+    parse: (source) => {
+      const { entries, boxed } = parseTreeView(source);
+      return boxed ? null : entries;
+    },
+    find: (entries, ref) => (ref.kind === KIND ? entries[Number(ref.id)] : undefined),
+    axis: () => 'y',
+    accepts: (ref, target) => ref.kind === KIND && target.kind === KIND,
+    allowed: (_e, target, place) => place !== 'into' || target.slash !== null,
+    result: (_e, index) => ({ label: t('tv.history.move'), select: { kind: KIND, id: String(index) } }),
+  }),
 };
 
 function lastIndex(n: OutlineNode): number {

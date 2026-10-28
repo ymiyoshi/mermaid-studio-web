@@ -1,8 +1,8 @@
 import type { ChangeSpec } from '@codemirror/state';
-import type { DiagramPlugin, DiagramTarget, PropertyField, SourceRange } from './types';
+import type { ActionResult, DiagramPlugin, DiagramTarget, PropertyField, SourceRange } from './types';
 import { labelText, withGeneric } from './generic';
-import { bodyLines, indentOf, insertLineAfter, isComment, uniqueId, type SourceLine } from './source';
-import { removeLine, removeLines } from './lineOps';
+import { applySpec, bodyLines, indentOf, insertLineAfter, isComment, lastParse, uniqueId, type SourceLine } from './source';
+import { moveLines, reindent, removeLine, removeLines } from './lineOps';
 import { addHitArea, matchInOrder } from './svg';
 import { t } from '../i18n';
 
@@ -227,6 +227,81 @@ function deleteBlock(source: string, id: string): ChangeSpec[] | null {
   return [{ from, to }, ...edgeLines];
 }
 
+/** 入れ子のブロックの中の、子の字下げ */
+function innerIndent(p: ParsedBlock, group: BlockGroup): string {
+  const child = [...p.items.map((x) => ({ parent: x.parent, line: x.line })), ...p.groups.map((g) => ({ parent: g.parent, line: g.open }))].find(
+    (x) => x.parent === group.id,
+  );
+  return child ? indentOf(child.line.text) : `${indentOf(group.open.text)}  `;
+}
+
+/** id が group（入れ子のブロック）の中にあるか（group 自身を含む） */
+function within(p: ParsedBlock, id: string, group: string): boolean {
+  for (let x: string | null = id; x !== null; x = p.items.find((i) => i.id === x)?.parent ?? p.groups.find((g) => g.id === x)?.parent ?? null) {
+    if (x === group) return true;
+  }
+  return false;
+}
+
+/**
+ * ブロックを、別のブロックの前（before）・後ろ、または入れ子のブロックの中（into: 最後）へ動かす（ドラッグでの移動）。
+ * ブロック図は書いた順に左上から格子に並べるので、並び順がそのまま位置になる。
+ * 1 行に並んだブロックは、行の中の ID からの範囲だけを動かす。入れ子のブロックは block: から end までの行ごと動かす
+ */
+function moveBlock(source: string, id: string, targetId: string, place: 'before' | 'after' | 'into'): ActionResult | null {
+  const p = parseBlock(source);
+  const item = p.items.find((x) => x.id === id);
+  const group = item ? null : p.groups.find((g) => g.id === id);
+  const toItem = p.items.find((x) => x.id === targetId);
+  const toGroup = toItem ? null : p.groups.find((g) => g.id === targetId);
+  if ((!item && !group?.close) || (!toItem && !toGroup?.close) || id === targetId || within(p, targetId, id)) return null;
+  if (place === 'into' && !toGroup) return null;
+  if (item && !item.complete) return null;
+  if (toItem && !toItem.complete) return null;
+  // 入れ子の最後の 1 つは動かさない（中身が空の入れ子は書けない）
+  const parent = item ? item.parent : group!.parent;
+  if (parent !== null && [...p.items, ...p.groups].filter((x) => x.parent === parent).length === 1 && !(place === 'into' && toGroup!.id === parent)) return null;
+  const label = t('blk.history.move', { id });
+  if (group) {
+    // 1 行に並んだブロックの間へは、行をそこで分けて入れる（行全体の前後にすると、格子の並びが示した位置とずれる）
+    const row = toItem ? p.items.filter((x) => x.line.index === toItem.line.index) : [];
+    const k = toItem ? row.indexOf(toItem) : -1;
+    const gap = place === 'before' ? (k > 0 ? [row[k - 1], toItem!] : null) : place === 'after' && k >= 0 && k < row.length - 1 ? [toItem!, row[k + 1]] : null;
+    if (gap && source.slice(gap[0].range.to, gap[1].range.from).trim() === '') {
+      const indent = indentOf(toItem!.line.text);
+      const text = reindent(source.slice(group.open.from, group.close!.to), indentOf(group.open.text), indent);
+      const change = [removeLines(source, group.open, group.close!), { from: gap[0].range.to, to: gap[1].range.from, insert: `\n${text}\n${indent}` }];
+      return { change, label, select: { kind: 'block-item', id } };
+    }
+    // 入れ子のブロック: 行ごと、相手の行の前後（入れ子の中なら end の前）へ
+    const r =
+      place === 'into'
+        ? moveLines(source, group.open, group.close!, toGroup!.close!, true, innerIndent(p, toGroup!))
+        : moveLines(source, group.open, group.close!, place === 'before' ? (toItem?.line ?? toGroup!.open) : (toItem?.line ?? toGroup!.close!), place === 'before', indentOf((toItem?.line ?? toGroup!.open).text));
+    return r && { change: r.change, label, select: { kind: 'block-item', id } };
+  }
+  const text = source.slice(item!.range.from, item!.range.to);
+  // 元のブロックを消す（deleteBlock と同じく、前の空白ごと。行に 1 つだけなら行ごと）
+  const onLine = p.items.filter((x) => x.line.index === item!.line.index);
+  let remove: ChangeSpec;
+  if (onLine.length === 1) remove = removeLine(source, item!.line);
+  else {
+    const first = onLine[0] === item;
+    const from = first ? item!.range.from : item!.line.from + source.slice(item!.line.from, item!.range.from).trimEnd().length;
+    let to = item!.range.to;
+    if (first) while (to < item!.line.to && /\s/.test(source[to])) to++;
+    remove = { from, to };
+  }
+  let insert: ChangeSpec;
+  if (place === 'into') insert = { from: toGroup!.close!.from, insert: `${innerIndent(p, toGroup!)}${text}\n` };
+  else if (toItem) insert = place === 'before' ? { from: toItem.range.from, insert: `${text} ` } : { from: toItem.range.to, insert: ` ${text}` };
+  else if (place === 'before') insert = { from: toGroup!.open.from, insert: `${indentOf(toGroup!.open.text)}${text}\n` };
+  else insert = { from: toGroup!.close!.to, insert: `\n${indentOf(toGroup!.open.text)}${text}` };
+  const change = [remove, insert];
+  if (applySpec(source, change) === source) return null;
+  return { change, label, select: { kind: 'block-item', id } };
+}
+
 /** トップレベルの最後のブロックの行（矢印や classDef より前に足すため） */
 function lastTopItemLine(p: ParsedBlock): SourceLine | null {
   let last: SourceLine | null = null;
@@ -237,6 +312,8 @@ function lastTopItemLine(p: ParsedBlock): SourceLine | null {
 }
 
 const svgId = (el: Element) => el.id.replace(/^mmd-render-\d+-/, '');
+
+const parseBlockOnce = lastParse(parseBlock);
 
 export const blockPlugin: DiagramPlugin = {
   type: 'block',
@@ -438,5 +515,22 @@ export const blockPlugin: DiagramPlugin = {
       },
     },
   ],
+
+  // ドラッグ: ブロックを、別のブロックの前後（格子の並び順）か、入れ子のブロックの中へ動かす
+  reorder: {
+    axis(source, ref) {
+      if (ref.kind !== 'block-item') return null;
+      const p = parseBlock(source);
+      return p.items.some((x) => x.id === ref.id && x.complete) || p.groups.some((g) => g.id === ref.id && g.close) ? 'xy' : null;
+    },
+    accepts: (ref, target) => ref.kind === 'block-item' && target.kind === 'block-item',
+    move: (source, ref, target, before) => moveBlock(source, ref.id, target.id, before ? 'before' : 'after'),
+    acceptsInto(source, ref, container) {
+      if (container?.kind !== 'block-item' || ref.kind !== 'block-item') return false;
+      const p = parseBlockOnce(source);
+      return p.groups.some((g) => g.id === container.id && g.close) && !within(p, container.id, ref.id);
+    },
+    into: (source, ref, container) => (container ? moveBlock(source, ref.id, container.id, 'into') : null),
+  },
 };
 

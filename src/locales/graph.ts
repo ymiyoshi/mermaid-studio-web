@@ -91,6 +91,7 @@ export const ja = {
   'mm.history.moveUp': 'トピックを上へ移動',
   'mm.history.moveDown': 'トピックを下へ移動',
   'mm.history.delete': 'トピックを削除（子も含む）',
+  'mm.history.drag': 'トピックを移動',
 
   // kanban
   'kb.newColumn': '新しい列',
@@ -106,6 +107,7 @@ export const ja = {
   'kb.history.moveBack': '{id} を前へ移動',
   'kb.history.moveForward': '{id} を後ろへ移動',
   'kb.history.delete': '{id} を削除',
+  'kb.history.drag': '{id} を移動',
 
   // block
   'blk.newBlock': '新しいブロック',
@@ -134,6 +136,7 @@ export const ja = {
   'blk.action.connect': '→ 矢印',
   'blk.prompt.connect': '矢印の先のブロックをクリックしてください（Esc で取り消し）',
   'blk.history.add': 'ブロック {id} を追加',
+  'blk.history.move': 'ブロック {id} を移動',
   'blk.history.addNext': 'ブロック {id} を {ref} の次に追加',
   'blk.history.addInside': 'ブロック {id} を {ref} の中に追加',
   'blk.history.connect': '{a} → {b} の矢印を追加',
@@ -174,6 +177,8 @@ export const ja = {
   'arch.prompt.connect': '線の先のサービスか junction をクリックしてください（Esc で取り消し）',
   'arch.history.addService': 'サービス {id} を追加',
   'arch.history.addGroup': 'グループ {id} を追加',
+  'arch.history.moveInto': '{id} をグループ {group} へ移す',
+  'arch.history.moveOut': '{id} をグループの外へ出す',
   'arch.history.addNext': 'サービス {id} を {ref} の次に追加',
   'arch.history.addInside': 'サービス {id} を {ref} の中に追加',
   'arch.history.connect': '{a} — {b} の線を追加',
@@ -272,6 +277,7 @@ export const en: Record<keyof typeof ja, string> = {
   'mm.history.moveUp': 'Move topic up',
   'mm.history.moveDown': 'Move topic down',
   'mm.history.delete': 'Delete topic (with children)',
+  'mm.history.drag': 'Move topic',
 
   'kb.newColumn': 'New column',
   'kb.newCard': 'New card',
@@ -286,6 +292,7 @@ export const en: Record<keyof typeof ja, string> = {
   'kb.history.moveBack': 'Move {id} up',
   'kb.history.moveForward': 'Move {id} down',
   'kb.history.delete': 'Delete {id}',
+  'kb.history.drag': 'Move {id}',
 
   'blk.newBlock': 'New block',
   'blk.shape.rect': 'Rectangle',
@@ -313,6 +320,7 @@ export const en: Record<keyof typeof ja, string> = {
   'blk.action.connect': '→ Arrow',
   'blk.prompt.connect': 'Click the target block (Esc to cancel)',
   'blk.history.add': 'Add block {id}',
+  'blk.history.move': 'Move block {id}',
   'blk.history.addNext': 'Add block {id} after {ref}',
   'blk.history.addInside': 'Add block {id} inside {ref}',
   'blk.history.connect': 'Add arrow {a} → {b}',
@@ -351,6 +359,8 @@ export const en: Record<keyof typeof ja, string> = {
   'arch.prompt.connect': 'Click the target service or junction (Esc to cancel)',
   'arch.history.addService': 'Add service {id}',
   'arch.history.addGroup': 'Add group {id}',
+  'arch.history.moveInto': 'Move {id} into group {group}',
+  'arch.history.moveOut': 'Move {id} out of its group',
   'arch.history.addNext': 'Add service {id} after {ref}',
   'arch.history.addInside': 'Add service {id} inside {ref}',
   'arch.history.connect': 'Add line {a} — {b}',

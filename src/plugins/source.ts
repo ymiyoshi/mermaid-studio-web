@@ -22,6 +22,15 @@ export function splitLines(source: string): SourceLine[] {
   return out;
 }
 
+/**
+ * 最後に読んだソースの結果を覚えておく読み取り（ドラッグを始めるとき、候補の要素ごとに同じソースを読み直さないため）。
+ * 結果は読むだけにして、書き換えない
+ */
+export function lastParse<R>(parse: (source: string) => R): (source: string) => R {
+  let last: { source: string; result: R } | null = null;
+  return (source) => (last?.source === source ? last.result : (last = { source, result: parse(source) }).result);
+}
+
 export const isComment = (text: string) => /^\s*%%/.test(text);
 export const isBlank = (text: string) => text.trim() === '';
 export const indentOf = (text: string) => /^\s*/.exec(text)![0];

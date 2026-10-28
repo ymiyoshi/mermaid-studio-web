@@ -1,6 +1,6 @@
 import { withValue, type DiagramPlugin, type DiagramTarget, type PropertyField, type SourceRange } from './types';
 import { genericTargets, labelText } from './generic';
-import { bodyLines, indentOf, insertLineAfter, rangeInInserted, tokenRegex, uniqueId, type SourceLine } from './source';
+import { bodyLines, indentOf, insertLineAfter, lastParse, rangeInInserted, tokenRegex, uniqueId, type SourceLine } from './source';
 import { ARROWS, isInside, META_SHAPES, nodeDefinition, nodeRefs, parseFlowchart, SHAPE_CHOICES, subgraphOf, type FlowDoc } from './flowchartSyntax';
 import {
   arrowParts,
@@ -517,6 +517,24 @@ export const flowPlugin = (v: FlowVariant): DiagramPlugin => ({
       },
     },
   ],
+
+  // ドラッグ: ノードをサブグラフ（swimlane のレーン・agentflow の flow）の中へ、または外へ移す。
+  // 位置は自動レイアウトのままなので、前後の並べ替えはしない（設計書 §6.3）
+  reorder: {
+    axis: (source, ref) =>
+      ref.kind === 'node' && !parseFlowchart(source).connectors.some((c) => c.id === ref.id) && canMoveNode(source, ref.id) ? 'xy' : null,
+    // 図の一番外へは、サブグラフの中にあるノードだけ（外にあるノードは、外へ動かしても変わらない）
+    acceptsInto: (source, ref, container) =>
+      ref.kind === 'node' && (container === null ? !!subgraphOf(parseFlowchartOnce(source), ref.id) : container.kind === 'subgraph'),
+    into(source, ref, container) {
+      const change = moveNodeTo(source, ref.id, container?.id ?? '');
+      if (!change) return null;
+      const label = container ? t('fc.history.moveInto', { node: ref.id, id: container.id }) : t('fc.history.moveOut', { node: ref.id });
+      return { change, label, select: ref };
+    },
+  },
 });
+
+const parseFlowchartOnce = lastParse(parseFlowchart);
 
 export const flowchartPlugin = flowPlugin({ type: 'flowchart-v2', nodePrefix: 'flowchart', shapes: SHAPE_OPTIONS, arrows: EDGE_ARROWS });

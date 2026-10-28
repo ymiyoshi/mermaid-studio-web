@@ -395,6 +395,26 @@ function inside(rect: Element, pt: [number, number] | undefined): boolean {
 
 const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
 
+/** 描く範囲（2 本の軸の線）。左下が原点で、右へ進化、上へ見える度合いが増える */
+function plotArea(svg: SVGSVGElement): { width: number; height: number } | null {
+  const lines = [...svg.querySelectorAll('g.wardley-axes > line')].map((l) => ['x1', 'x2', 'y1', 'y2'].map((a) => Number(l.getAttribute(a))));
+  const h = lines.find(([x1, x2, y1, y2]) => y1 === y2 && x1 !== x2);
+  const v = lines.find(([x1, x2, y1, y2]) => x1 === x2 && y1 !== y2);
+  return h && v ? { width: Math.abs(h[1] - h[0]), height: Math.abs(v[3] - v[2]) } : null;
+}
+
+/**
+ * 座標を割合 d だけずらした値（0〜100 で書いた座標は 100 倍。範囲の外には出さない）。
+ * mermaid は値ごとに 1 以下を割合、1 より大きい値を 0〜100 として読むので、0〜100 の座標が 1 以下になったら割合で書く
+ */
+function shifted(n: Num, d: number): string {
+  const percent = Number(n.value) > 1;
+  const max = percent ? 100 : 1;
+  const v = Math.min(max, Math.max(0, Number(n.value) + (percent ? d * 100 : d)));
+  if (percent && Number(v.toFixed(1)) > 0 && Number(v.toFixed(1)) <= 1) return (v / 100).toFixed(3);
+  return percent ? v.toFixed(1) : v.toFixed(2);
+}
+
 export const wardleyPlugin: DiagramPlugin = {
   type: 'wardley',
 
@@ -672,4 +692,29 @@ export const wardleyPlugin: DiagramPlugin = {
       },
     },
   ],
+
+  // ドラッグ: 部品・利用者・メモを、落とした位置の座標に置く（座標はそのまま Mermaid の書き方なので、設計書 §6.3 の例外）。
+  // pipeline の中の部品は、進化だけを変える（見える度合いは親のもの）
+  reorder: {
+    axis(source, ref) {
+      const p = parseWardley(source);
+      return findNode(p, ref) || (ref.kind === 'note' && p.notes[Number(ref.id)]) ? 'free' : null;
+    },
+    place(source, ref, svg, by) {
+      const area = plotArea(svg);
+      const p = parseWardley(source);
+      const n = ref.kind === 'note' ? p.notes[Number(ref.id)] : findNode(p, ref);
+      if (!area || !n || area.width <= 0 || area.height <= 0) return null;
+      const changes: ChangeSpec[] = [];
+      const e = shifted(n.e, by.x / area.width);
+      if (ratio(e) !== ratio(n.e.value)) changes.push({ ...n.e.range, insert: e });
+      if (n.v) {
+        const v = shifted(n.v, -by.y / area.height);
+        if (ratio(v) !== ratio(n.v.value)) changes.push({ ...n.v.range, insert: v });
+      }
+      if (changes.length === 0) return null;
+      const name = ref.kind === 'note' ? t('wm.note') : ref.id;
+      return { change: changes, label: t('wm.history.move', { name }), select: ref };
+    },
+  },
 };

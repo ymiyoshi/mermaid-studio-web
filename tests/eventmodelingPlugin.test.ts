@@ -160,11 +160,11 @@ describe('図からの操作', () => {
   it('ドラッグで並べ替える', async () => {
     const r = eventmodelingPlugin.reorder!;
     expect(r.axis(BASIC, frame('01'))).toBe('x');
-    let out = await apply(BASIC, r.move(BASIC, frame('04'), frame('01'), true)!.change);
+    let out = await apply(BASIC, r.move!(BASIC, frame('04'), frame('01'), true)!.change);
     expect(parseFrames(out).map((f) => f.id)).toEqual(['04', '01', '02', '03']);
-    out = await apply(BASIC, r.move(BASIC, frame('01'), frame('04'), false)!.change);
+    out = await apply(BASIC, r.move!(BASIC, frame('01'), frame('04'), false)!.change);
     expect(parseFrames(out).map((f) => f.id)).toEqual(['02', '03', '04', '01']);
-    expect(r.move(BASIC, frame('01'), frame('02'), true)).toBeNull();
+    expect(r.move!(BASIC, frame('01'), frame('02'), true)).toBeNull();
   });
 
   it('すべての操作が、見本のすべての要素で構文を壊さない', async () => {
