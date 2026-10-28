@@ -20,7 +20,7 @@ async function apply(source: string, change: ChangeSpec) {
 }
 
 const action = (id: string) => blockPlugin.actions!.find((a) => a.id === id)!;
-const run = (id: string, source: string, refs: ElementRef[] = []) => action(id).run(source, refs);
+const run = (id: string, source: string, refs: ElementRef[] = [], shape?: string) => action(id).run(source, refs, shape);
 const block = (id: string): ElementRef => ({ kind: 'block-item', id });
 
 /** 変わった行（コメント行が残ることを確かめる） */
@@ -84,6 +84,24 @@ describe('block 図', () => {
     }
     expect(await apply(SRC, action('add-block').run(SRC, [], 'cylinder')!.change)).toContain('    b1[("新しいブロック")]\n');
     expect(action('add-block').run(SRC, [], 'no-such-shape')).toBeNull();
+  });
+
+  it('図の上の「＋」でも形を選んで足せる（同じ行の次・入れ子の中。どの形も mermaid.parse を通る）', async () => {
+    const cases: [string, ElementRef][] = [
+      ['add-next', block('front')],
+      ['add-next', block('back')],
+      ['add-inside', block('back')],
+    ];
+    for (const [id, ref] of cases) {
+      for (const { value } of action(id).shapes!) {
+        const out = await apply(SRC, run(id, SRC, [ref], value)!.change);
+        keeps(SRC, out, '%% 画面とサーバーの構成');
+        const added = parseBlock(out).items.find((x) => x.id === 'b1')!;
+        expect(out.slice(added.label!.from, added.label!.to)).toContain('新しいブロック');
+      }
+      expect(run(id, SRC, [ref], 'no-such-shape')).toBeNull();
+    }
+    expect(await apply(SRC, run('add-next', SRC, [block('front')], 'circle')!.change)).toContain('front["フロント"] b1(("新しいブロック")) api["API"]:2');
   });
 
   it('矢印を足し、ブロックを消すと矢印も消える', async () => {

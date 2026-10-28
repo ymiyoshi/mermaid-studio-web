@@ -179,6 +179,15 @@ export function parseBlock(source: string): ParsedBlock {
 
 const NEW_LABEL = t('blk.newBlock');
 
+/** 形の一覧（ツールバー・図の上の「＋」の ▾ と、プロパティパネルの形の欄） */
+const SHAPE_OPTIONS = BLOCK_SHAPES.map((s) => ({ value: s.name, label: s.label }));
+
+/** 形を付けた新しいブロックの書き方（読めない形なら null） */
+function newBlock(id: string, shape: string): string | null {
+  const s = BLOCK_SHAPES.find((x) => x.name === shape);
+  return s ? `${id}${s.open}"${NEW_LABEL}"${s.close}` : null;
+}
+
 /** ブロック（または入れ子のブロック）を消す変更。矢印の行も消す */
 function deleteBlock(source: string, id: string): ChangeSpec[] | null {
   const p = parseBlock(source);
@@ -288,7 +297,7 @@ export const blockPlugin: DiagramPlugin = {
     return [
       { id: 'id', label: 'ID', type: 'text', value: item.id, readonly: true },
       { id: 'label', label: t('plg.label'), type: 'text', value: item.label ? source.slice(item.label.from, item.label.to) : '' },
-      { id: 'shape', label: t('blk.field.shape'), type: 'shape', value: shape, options: BLOCK_SHAPES.map((s) => ({ value: s.name, label: s.label })) },
+      { id: 'shape', label: t('blk.field.shape'), type: 'shape', value: shape, options: SHAPE_OPTIONS },
       { id: 'width', label: t('blk.field.width'), type: 'number', value: item.width ? String(item.width.value) : '', placeholder: '1' },
     ];
   },
@@ -352,16 +361,16 @@ export const blockPlugin: DiagramPlugin = {
       id: 'add-block',
       title: t('blk.action.add'),
       arity: 0,
-      shapes: BLOCK_SHAPES.map((s) => ({ value: s.name, label: s.label })),
+      shapes: SHAPE_OPTIONS,
       run(source, _refs, shape = 'rect') {
-        const s = BLOCK_SHAPES.find((x) => x.name === shape);
-        if (!s) return null;
-        const p = parseBlock(source);
         const id = uniqueId(source, 'b');
+        const text = newBlock(id, shape);
+        if (!text) return null;
+        const p = parseBlock(source);
         const last = lastTopItemLine(p);
         const { header, body } = bodyLines(source);
         const indent = last ? indentOf(last.text) : body[0] ? indentOf(body[0].text) || '    ' : '    ';
-        const change = insertLineAfter(source, last ?? header, `${indent}${id}${s.open}"${NEW_LABEL}"${s.close}`);
+        const change = insertLineAfter(source, last ?? header, `${indent}${text}`);
         return { change, label: t('blk.history.add', { id }), focus: { kind: 'block-item', id } };
       },
     },
@@ -371,12 +380,14 @@ export const blockPlugin: DiagramPlugin = {
       arity: 1,
       appliesTo: ['block-item'],
       key: 'Tab',
-      run(source, [ref]) {
+      shapes: SHAPE_OPTIONS,
+      run(source, [ref], shape = 'rect') {
         const p = parseBlock(source);
         const item = p.items.find((x) => x.id === ref.id);
         const group = p.groups.find((g) => g.id === ref.id);
         const id = uniqueId(source, 'b');
-        const text = `${id}["${NEW_LABEL}"]`;
+        const text = newBlock(id, shape);
+        if (!text) return null;
         // 同じ行の後ろに並べる（入れ子のブロックなら end の後ろの行に足す）
         const change = item ? { from: item.range.to, insert: ` ${text}` } : group?.close ? insertLineAfter(source, group.close, `${indentOf(group.close.text)}${text}`) : null;
         return change ? { change, label: t('blk.history.addNext', { id, ref: ref.id }), focus: { kind: 'block-item', id } } : null;
@@ -387,11 +398,13 @@ export const blockPlugin: DiagramPlugin = {
       title: t('blk.action.addInside'),
       arity: 1,
       appliesTo: ['block-item'],
-      run(source, [ref]) {
+      shapes: SHAPE_OPTIONS,
+      run(source, [ref], shape = 'rect') {
         const group = parseBlock(source).groups.find((g) => g.id === ref.id);
-        if (!group?.close) return null;
         const id = uniqueId(source, 'b');
-        const change = { from: group.close.from, insert: `${indentOf(group.open.text)}    ${id}["${NEW_LABEL}"]\n` };
+        const text = newBlock(id, shape);
+        if (!group?.close || !text) return null;
+        const change = { from: group.close.from, insert: `${indentOf(group.open.text)}    ${text}\n` };
         return { change, label: t('blk.history.addInside', { id, ref: ref.id }), focus: { kind: 'block-item', id } };
       },
     },

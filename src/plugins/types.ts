@@ -68,7 +68,7 @@ export interface DiagramAction {
   danger?: boolean;
   /** true なら要素の上のボタンには出さず、右クリックのメニューにだけ出す */
   menuOnly?: boolean;
-  /** arity 0 のとき、ボタンの横の一覧から選んで実行できる形（値は形の名前で、run の shape に渡る。省略時は既定の形） */
+  /** 新しいノードを足す操作で、ボタンの横の一覧から選べる形（値は形の名前で、run の shape に渡る。省略時・キーで実行したときは既定の形） */
   shapes?: { value: string; label: string }[];
   run(source: string, refs: ElementRef[], shape?: string): ActionResult | null;
 }

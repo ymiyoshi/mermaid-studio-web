@@ -1944,7 +1944,9 @@ button.tag {
   left: 0;
   z-index: 30;
   width: 232px;
+  overflow-y: auto;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+  cursor: default;
 }
 
 /* ---- 部品集 ---- */
