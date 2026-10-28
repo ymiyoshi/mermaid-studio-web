@@ -468,8 +468,14 @@ test('アーキテクチャ図: 次のサービスを足してラベルを付け
   await page.locator('.inline-label-editor input').fill('キャッシュ');
   await page.keyboard.press('Enter');
   await expect.poll(() => editorText(page)).toContain('service svc1(server)[キャッシュ] in api');
-  await expect.poll(() => editorText(page)).toContain('server:R -- L:svc1');
+  await expect.poll(() => editorText(page)).toContain('server:B -- T:svc1');
   await expect(service('キャッシュ')).toHaveCount(1);
+  // 足したサービスが、すでにあるサービスと重ならない（server の右には db がある）
+  const boxes = await page.locator('.diagram-canvas g.architecture-service').evaluateAll((els) => els.map((el) => el.getBoundingClientRect().toJSON() as DOMRect));
+  expect(boxes).toHaveLength(3);
+  for (const [i, a] of boxes.entries()) {
+    for (const b of boxes.slice(i + 1)) expect(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top).toBe(true);
+  }
 
   await service('サーバー').click();
   await page.keyboard.press('Delete');

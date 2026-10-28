@@ -291,6 +291,82 @@ const ARROW_OPTIONS = [
 ];
 const arrowValue = (e: ArchEdge) => (e.left ? (e.right ? 'both' : 'back') : e.right ? 'forward' : 'none');
 
+// ---- 配置（線を足すとき、重ならない辺を選ぶため）--------------------------------
+// mermaid は線の「元の辺＋先の辺」の組（RL・TB・RT など）で、相手を隣の升目に置く（getDataStructures の BFS）。
+// 同じ升目に 2 つ置かれると重なるので、線を足すときは同じ計算をして、空いている升目に向かう辺を選ぶ。
+
+type Cell = [number, number];
+const OPPOSITE: Record<string, string> = { L: 'R', R: 'L', T: 'B', B: 'T' };
+const isX = (d: string) => d === 'L' || d === 'R';
+
+/** 辺の組 pair で、pos の隣に置かれる升目（mermaid の shiftPositionByArchitectureDirectionPair と同じ。y は上が正） */
+function shift([x, y]: Cell, pair: string): Cell {
+  const [l, r] = pair;
+  if (isX(l)) return isX(r) ? [x + (l === 'L' ? -1 : 1), y] : [x + (l === 'L' ? -1 : 1), y + (r === 'T' ? 1 : -1)];
+  return isX(r) ? [x + (r === 'L' ? 1 : -1), y + (l === 'T' ? 1 : -1)] : [x, y + (l === 'T' ? 1 : -1)];
+}
+
+/** 要素ごとの、つながった線での隣（辺の組 → 相手。同じ組は後の線で上書きされる）と、升目の位置 */
+export function archLayout(p: ParsedArchitecture) {
+  // mermaid はサービスを先に、junction を後に登録する
+  const ids = [...p.nodes.filter((n) => n.kind === 'service'), ...p.nodes.filter((n) => n.kind === 'junction')].map((n) => n.id);
+  const adj = new Map<string, Map<string, string>>(ids.map((id) => [id, new Map()]));
+  for (const e of p.edges) {
+    if (!adj.has(e.a) || !adj.has(e.b) || e.as.value + e.bs.value === e.as.value.repeat(2)) continue;
+    adj.get(e.a)!.set(e.as.value + e.bs.value, e.b);
+    adj.get(e.b)!.set(e.bs.value + e.as.value, e.a);
+  }
+  const pos = new Map<string, Cell>();
+  /** 要素の属するつながり（同じ番号どうしだけが同じ升目の座標を共有する） */
+  const comp = new Map<string, number>();
+  for (const start of ids) {
+    if (pos.has(start)) continue;
+    const c = comp.size === 0 ? 0 : Math.max(...comp.values()) + 1;
+    pos.set(start, [0, 0]);
+    comp.set(start, c);
+    const queue = [start];
+    const visited = new Set<string>();
+    while (queue.length) {
+      const id = queue.shift()!;
+      visited.add(id);
+      adj.get(id)!.forEach((other, pair) => {
+        if (visited.has(other)) return;
+        pos.set(other, shift(pos.get(id)!, pair));
+        comp.set(other, c);
+        queue.push(other);
+      });
+    }
+  }
+  return { adj, pos, comp };
+}
+
+/** from から新しい要素へ線を引くとき、重ならない升目に向かう from の辺（無ければ R） */
+function freeSide(p: ParsedArchitecture, from: string): string {
+  const { adj, pos, comp } = archLayout(p);
+  const at = pos.get(from);
+  if (!at) return 'R';
+  const taken = new Set([...pos].filter(([id]) => comp.get(id) === comp.get(from)).map(([, c]) => c.join(',')));
+  const side = ['R', 'B', 'T', 'L'].find((d) => {
+    const pair = d + OPPOSITE[d];
+    return !adj.get(from)?.has(pair) && !taken.has(shift(at, pair).join(','));
+  });
+  return side ?? 'R';
+}
+
+/** a と b をつなぐ辺。同じつながりにあれば、今の位置の向きに合わせる（合わない向きにすると配置が崩れる） */
+function connectSides(p: ParsedArchitecture, a: string, b: string): [string, string] {
+  const { pos, comp } = archLayout(p);
+  const pa = pos.get(a);
+  const pb = pos.get(b);
+  if (pa && pb && comp.get(a) === comp.get(b)) {
+    const [dx, dy] = [pb[0] - pa[0], pb[1] - pa[1]];
+    const side = Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? 'R' : 'L') : dy > 0 ? 'T' : 'B';
+    return [side, OPPOSITE[side]];
+  }
+  const side = freeSide(p, a);
+  return [side, OPPOSITE[side]];
+}
+
 const svgId = (el: Element) => el.id.replace(/^mmd-render-\d+-/, '');
 
 /** 新しいサービスの宣言（parent があればそのグループの中） */
@@ -468,7 +544,8 @@ export const architecturePlugin: DiagramPlugin = {
         const id = uniqueId(source, 'svc');
         const indent = indentOf(n.line.text);
         const decl = indent + serviceLine(id, n.parent?.value);
-        const edge = `${n.id}:R -- L:${id}`;
+        const side = freeSide(p, n.id);
+        const edge = `${n.id}:${side} -- ${OPPOSITE[side]}:${id}`;
         // 同じグループに入れ、元の宣言の次の行に足す。線は最後の線の後ろ（宣言より前にしかなければ、宣言と一緒に足す）
         const edgeAfter = lastEdgeLine(source, p);
         const change =
@@ -503,8 +580,10 @@ export const architecturePlugin: DiagramPlugin = {
       prompt: t('arch.prompt.connect'),
       run(source, [a, b]) {
         if (a.id === b.id) return null;
-        const after = lastEdgeLine(source, parseArchitecture(source));
-        const change = insertLineAfter(source, after, `${indentFor(source, after)}${a.id}:R -- L:${b.id}`);
+        const p = parseArchitecture(source);
+        const [as, bs] = connectSides(p, a.id, b.id);
+        const after = lastEdgeLine(source, p);
+        const change = insertLineAfter(source, after, `${indentFor(source, after)}${a.id}:${as} -- ${bs}:${b.id}`);
         return { change, label: t('arch.history.connect', { a: a.id, b: b.id }) };
       },
     },
