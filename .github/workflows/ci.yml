@@ -23,7 +23,8 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          # 版は .node-version に固定する（手元の nodenv・fnm などと CI で同じ版を使い、Renovate が LTS の版だけ上げる）
+          node-version-file: .node-version
           cache: npm
       - run: npm ci
       # レジストリの署名と来歴（provenance）を確かめる。すり替えられたパッケージを入れていないか
