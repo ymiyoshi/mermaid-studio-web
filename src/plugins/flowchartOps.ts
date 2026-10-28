@@ -204,6 +204,15 @@ export function insertNodeOnEdge(source: string, index: number, node: string): {
  * 新しい書き方（@{ … }）のノードは shape: の値だけを変え、括弧の形のノードは括弧だけを変える。
  * 括弧で書けない形を選んだときだけ、@{ shape: …, label: "…" } に書き直す
  */
+/** 形を付けた新しいノードの書き方（形は setShape と同じ名前。読めない形なら null） */
+export function nodeWithShape(id: string, label: string, shape: string): string | null {
+  const choice = SHAPE_CHOICES.find((s) => s.name === shape);
+  if (choice) return `${id}${choice.open}${label}${choice.close}`;
+  const metaName = shape.startsWith('@') ? shape.slice(1) : null;
+  if (!metaName || !META_SHAPES.some((m) => m.name === metaName)) return null;
+  return `${id}@{ shape: ${metaName}, label: "${label.replace(/"/g, '#quot;')}" }`;
+}
+
 export function setShape(source: string, id: string, shape: string): ChangeSpec[] | null {
   const metaName = shape.startsWith('@') ? shape.slice(1) : CLASSIC_TO_META[shape];
   const choice = SHAPE_CHOICES.find((s) => s.name === shape);

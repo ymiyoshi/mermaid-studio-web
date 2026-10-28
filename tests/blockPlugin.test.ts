@@ -76,6 +76,16 @@ describe('block 図', () => {
     expect(inside).toContain('queue>"キュー"]\n        b1["新しいブロック"]\n    end');
   });
 
+  it('形を選んでブロックを足せる（どの形も mermaid.parse を通る）', async () => {
+    for (const { value } of action('add-block').shapes!) {
+      const out = await apply(SRC, action('add-block').run(SRC, [], value)!.change);
+      keeps(SRC, out, '%% 画面とサーバーの構成');
+      expect(parseBlock(out).items.find((x) => x.id === 'b1')?.label).toBeTruthy();
+    }
+    expect(await apply(SRC, action('add-block').run(SRC, [], 'cylinder')!.change)).toContain('    b1[("新しいブロック")]\n');
+    expect(action('add-block').run(SRC, [], 'no-such-shape')).toBeNull();
+  });
+
   it('矢印を足し、ブロックを消すと矢印も消える', async () => {
     const connected = await apply(SRC, run('connect', SRC, [block('cache'), block('queue')])!.change);
     expect(connected).toMatch(/api --> db\n {4}cache --> queue\n$/);

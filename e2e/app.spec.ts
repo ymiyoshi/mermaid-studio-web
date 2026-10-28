@@ -121,6 +121,26 @@ test('履歴の版と今の版を図で比べる（変えた・足した要素�
   expect(errors).toEqual([]);
 });
 
+test('ツールバーの ▾ から形を選んでノードを足し、そのままラベルを打てる', async ({ page }) => {
+  await openApp(page);
+  await page.getByRole('button', { name: '＋ ノード（形を選ぶ）' }).click();
+  const chips = page.locator('.shape-action-palette .shape-chip');
+  await expect(chips.filter({ has: page.locator('svg') })).toHaveCount(await chips.count());
+  // Escape で閉じて、▾ にフォーカスが戻る
+  await page.keyboard.press('Escape');
+  await expect(chips).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '＋ ノード（形を選ぶ）' })).toBeFocused();
+
+  await page.getByRole('button', { name: '＋ ノード（形を選ぶ）' }).click();
+  await page.locator('.shape-action-palette').getByRole('button', { name: 'ひし形', exact: true }).click();
+  await expect(chips).toHaveCount(0);
+  await expect.poll(() => editorText(page)).toContain('N1{新しいノード}');
+  await page.locator('.inline-label-editor input').fill('分岐');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => editorText(page)).toContain('N1{分岐}');
+  expect((await historyLabels(page)).slice(-2)).toEqual(['ノード N1 を追加', 'ラベル変更「分岐」']);
+});
+
 test('Ctrl を押しながら複数のノードを選び、形をまとめて変えてから、まとめて消す', async ({ page }) => {
   await openApp(page);
   await node(page, '開始').click();

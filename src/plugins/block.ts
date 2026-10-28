@@ -352,13 +352,16 @@ export const blockPlugin: DiagramPlugin = {
       id: 'add-block',
       title: t('blk.action.add'),
       arity: 0,
-      run(source) {
+      shapes: BLOCK_SHAPES.map((s) => ({ value: s.name, label: s.label })),
+      run(source, _refs, shape = 'rect') {
+        const s = BLOCK_SHAPES.find((x) => x.name === shape);
+        if (!s) return null;
         const p = parseBlock(source);
         const id = uniqueId(source, 'b');
         const last = lastTopItemLine(p);
         const { header, body } = bodyLines(source);
         const indent = last ? indentOf(last.text) : body[0] ? indentOf(body[0].text) || '    ' : '    ';
-        const change = insertLineAfter(source, last ?? header, `${indent}${id}["${NEW_LABEL}"]`);
+        const change = insertLineAfter(source, last ?? header, `${indent}${id}${s.open}"${NEW_LABEL}"${s.close}`);
         return { change, label: t('blk.history.add', { id }), focus: { kind: 'block-item', id } };
       },
     },

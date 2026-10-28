@@ -220,6 +220,7 @@ const core = {
   'theme.cleared': '{name}の設定を外す',
   'color.palette': 'カラーパレット',
   'shape.palette': '形の一覧',
+  'shape.addWith': '{title}（形を選ぶ）',
   'color.custom': 'その他の色',
   'theme.hint': '図の先頭の設定（frontmatter の config）に書きます。色の細かい指定は、テーマを base にしたときにすべて効きます。',
   'bulk.heading': '{n} 個の{kind}',
