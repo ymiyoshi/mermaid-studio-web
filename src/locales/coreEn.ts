@@ -180,6 +180,7 @@ export const EN_CORE: Record<CoreKey, string> = {
   'theme.cleared': 'Clear {name}',
   'color.palette': 'Color palette',
   'shape.palette': 'Shapes',
+  'shape.addWith': '{title} (choose a shape)',
   'color.custom': 'Other color',
   'theme.hint': 'Written to the diagram’s header (frontmatter config). Detailed color settings take full effect when the theme is base.',
   'bulk.heading': '{kind} × {n}',

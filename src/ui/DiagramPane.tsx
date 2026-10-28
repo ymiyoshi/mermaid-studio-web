@@ -6,6 +6,7 @@ import { isPositional, refKey, sameRef, type ActionResult, type DiagramAction, t
 import { InlineLabelEditor, type LabelSession } from './InlineLabelEditor';
 import { PropertyPanel } from './PropertyPanel';
 import { ErrorBanner } from './ErrorBanner';
+import { ShapeActionButton } from './ShapeActionButton';
 import { getSetting, putSetting } from '../storage/db';
 import { DRAG_THRESHOLD_PX, fixSvgSize, rectIn, unionRect, usePanZoom, type Rect, type ViewBox } from './usePanZoom';
 import { contains, findDrop, markContainers, type DropCandidate, type DropSpot } from './reorderDrop';
@@ -231,10 +232,10 @@ export function DiagramPane() {
     await commit({ change, label: t('bulk.deleted', { n: String(refs.length) }) }, true);
   };
 
-  const runAction = async (action: DiagramAction, refs: ElementRef[]) => {
+  const runAction = async (action: DiagramAction, refs: ElementRef[], shape?: string) => {
     const source = useSession.getState().current?.text.toString();
     if (source === undefined || !canEdit || !refs.every(usable)) return;
-    await commit(action.run(source, refs), action.danger);
+    await commit(action.run(source, refs, shape), action.danger);
   };
 
   const triggerAction = (action: DiagramAction) => {
@@ -397,11 +398,15 @@ export function DiagramPane() {
     <section className="pane diagram-pane">
       <div className="pane-toolbar">
         <span className="pane-title">{diagramType ?? '—'}</span>
-        {toolbarActions.map((a) => (
-          <button key={a.id} className="btn" disabled={!canEdit} onClick={() => triggerAction(a)}>
-            {a.title}
-          </button>
-        ))}
+        {toolbarActions.map((a) =>
+          a.shapes ? (
+            <ShapeActionButton key={a.id} action={{ ...a, shapes: a.shapes }} disabled={!canEdit} run={(shape) => void runAction(a, [], shape)} />
+          ) : (
+            <button key={a.id} className="btn" disabled={!canEdit} onClick={() => triggerAction(a)}>
+              {a.title}
+            </button>
+          ),
+        )}
         <span className="spacer" />
         <button className={`btn${panelOpen ? ' active' : ''}`} onClick={togglePanel} aria-pressed={panelOpen}>
           {t('panel.toggle')}

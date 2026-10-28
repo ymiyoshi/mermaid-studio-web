@@ -1916,6 +1916,37 @@ button.tag {
   white-space: nowrap;
 }
 
+/* ツールバーの「＋ ノード ▾」。一覧はボタンの下に重ねて出す */
+.shape-action {
+  position: relative;
+  display: flex;
+}
+
+.shape-action > .btn {
+  font-size: 12px;
+}
+
+.shape-action > .btn:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.shape-action-toggle {
+  margin-left: -1px;
+  padding: 4px 6px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.shape-action-palette {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  width: 232px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+}
+
 /* ---- 部品集 ---- */
 .modal.snippets-dialog {
   width: min(640px, 100%);

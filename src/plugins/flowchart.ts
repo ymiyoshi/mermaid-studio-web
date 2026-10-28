@@ -10,6 +10,7 @@ import {
   edgeInfo,
   getDirection,
   insertNodeOnEdge,
+  nodeWithShape,
   reconnectEdge,
   renameNode,
   setArrow,
@@ -336,10 +337,13 @@ export const flowchartPlugin: DiagramPlugin = {
       id: 'add-node',
       title: t('fc.action.addNode'),
       arity: 0,
-      run(source) {
+      shapes: SHAPE_OPTIONS,
+      run(source, _refs, shape = 'rect') {
         const id = uniqueId(source, 'N');
+        const node = nodeWithShape(id, NEW_LABEL, shape);
+        if (!node) return null;
         const { after, indent } = topLevelEnd(source, DEFAULT_INDENT);
-        return { ...addLine(source, after, indent, `${id}[${NEW_LABEL}]`, id), label: t('fc.history.addNode', { id }) };
+        return { ...addLine(source, after, indent, node, id), label: t('fc.history.addNode', { id }) };
       },
     },
     {

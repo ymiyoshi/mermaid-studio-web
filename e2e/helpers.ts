@@ -29,6 +29,6 @@ export async function newFromTemplate(page: Page, name: string) {
 /** エディタの全文を置き換える */
 export async function setEditorText(page: Page, text: string) {
   await page.locator('.cm-content').click();
-  await page.keyboard.press('Control+A');
+  await page.keyboard.press('ControlOrMeta+A');
   await page.keyboard.insertText(text);
 }

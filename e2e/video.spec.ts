@@ -43,7 +43,7 @@ test('動画の書き出し中に別の図に切り替えると、書き出し�
   await view.getByRole('button', { name: '動画（WebM）で書き出す' }).click();
   await expect(view.getByRole('button', { name: /書き出しをやめる/ })).toBeVisible();
   // 書き出しの途中で、コマンドパレットから別の図を作る
-  await page.keyboard.press('Control+K');
+  await page.keyboard.press('ControlOrMeta+K');
   await page.getByRole('dialog', { name: 'コマンド' }).getByRole('combobox').fill('円グラフ');
   await page.keyboard.press('Enter');
   await expect(page.locator('.title-input')).toHaveValue('円グラフ');

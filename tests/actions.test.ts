@@ -8,9 +8,9 @@ import { findParticipantLabel, sequencePlugin } from '../src/plugins/sequence';
 import { uniqueId } from '../src/plugins/source';
 import type { DiagramPlugin } from '../src/plugins/types';
 
-function run(plugin: DiagramPlugin, actionId: string, source: string, args: string[] = [], kind = 'node') {
+function run(plugin: DiagramPlugin, actionId: string, source: string, args: string[] = [], kind = 'node', shape?: string) {
   const action = plugin.actions!.find((a) => a.id === actionId)!;
-  const res = action.run(source, args.map((id) => ({ kind, id })))!;
+  const res = action.run(source, args.map((id) => ({ kind, id })), shape)!;
   const after = ChangeSet.of(res.change, source.length).apply(Text.of(source.split('\n'))).toString();
   return { ...res, after };
 }
@@ -61,6 +61,25 @@ describe('flowchart: 追加と接続', () => {
     expect(r.focus).toEqual({ kind: 'node', id: 'N1' });
     expect(r.after.slice(r.selAfter!.anchor, r.selAfter!.head)).toBe('新しいノード');
     await expect(mermaid.parse(r.after)).resolves.toBeTruthy();
+  });
+
+  it('形を選んでノードを追加できる（括弧の形も、新しい書き方の形も、すべて mermaid.parse を通る）', async () => {
+    const shapes = flowchartPlugin.actions!.find((a) => a.id === 'add-node')!.shapes!;
+    expect(shapes.map((s) => s.value)).toEqual(expect.arrayContaining(['rect', 'rhombus', '@doc']));
+    for (const { value } of shapes) {
+      const r = run(flowchartPlugin, 'add-node', FLOW, [], 'node', value);
+      // 既存の行は変えずに、1 行だけ増える
+      expect(r.after.startsWith(FLOW.replace(/\n$/, ''))).toBe(true);
+      expect(r.after.slice(r.selAfter!.anchor, r.selAfter!.head)).toBe('新しいノード');
+      expect(r.focus).toEqual({ kind: 'node', id: 'N1' });
+      await expect(mermaid.parse(r.after), value).resolves.toBeTruthy();
+    }
+    expect(run(flowchartPlugin, 'add-node', FLOW, [], 'node', 'rhombus').after).toContain('    N1{新しいノード}\n');
+    expect(run(flowchartPlugin, 'add-node', FLOW, [], 'node', '@doc').after).toContain('    N1@{ shape: doc, label: "新しいノード" }\n');
+  });
+
+  it('読めない形では追加しない', () => {
+    expect(flowchartPlugin.actions!.find((a) => a.id === 'add-node')!.run(FLOW, [], 'no-such-shape')).toBeNull();
   });
 
   it('次のノードは、元のノードが最後に出てくる行の後ろに同じインデントで入る', async () => {
