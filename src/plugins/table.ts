@@ -1,6 +1,6 @@
 import type { ChangeSpec } from '@codemirror/state';
 import { bodyLines, indentOf, type SourceLine } from './source';
-import { removeLine } from './lineOps';
+import { removeLine, removeLines } from './lineOps';
 
 // 設計書 §7.3: データ系の図種（pie / gantt / sankey など）は、行を表として編集する。
 // 1 行 = 1 つの文。セルを変えると、その値の範囲だけを書き換える（行の他の部分や書式は変えない）。
@@ -32,6 +32,21 @@ export interface RowSchema {
   format(values: Record<string, string>): string;
   /** 追加する行の初期値 */
   defaults: Record<string, string>;
+  /** 追加する行の初期値を、前にある行から決める（packet のビットの位置など）。無ければ defaults */
+  next?(before: TableRow[]): Record<string, string>;
+  /** 表の最後にしか足せない行（packet: ビットの位置は前から順に続くので、途中に足すと重なる） */
+  appendOnly?: boolean;
+  /** 行が { から } までの複数行のまとまり（requirementDiagram の要求・要素）。足す・消す・動かすは、まとまりごと */
+  block?: boolean;
+  /**
+   * 後ろに続く行のうち、この行に属する行の種類（'*' は自分と違う種類すべて。section は次の section まで、timeline の期間は続きの出来事）。
+   * この行の次に足す行は、属する行の後ろに入れる（間に入れると、属する行を新しい行が取ってしまう）
+   */
+  owns?: string[] | '*';
+  /** インデントが深い後ろの行が、この行に属する（treemap の入れ子） */
+  nested?: boolean;
+  /** 図から消してよいか（Git グラフの branch・checkout や最初のコミットは、後ろの行が頼っている）。無ければ消してよい */
+  canDelete?(row: TableRow, rows: TableRow[]): boolean;
   /** セルの値をソースに書くときの変換（引用符のエスケープなど） */
   encode?(field: string, value: string): string;
 }
@@ -46,6 +61,10 @@ export interface TableDef {
 
 export interface TableRow {
   line: SourceLine;
+  /** 行の最後の行（block のときは } の行。それ以外は line と同じ） */
+  end: SourceLine;
+  /** line から end までの文字列 */
+  text: string;
   schema: RowSchema;
   values: Record<string, string>;
   ranges: Record<string, [number, number]>;
@@ -70,7 +89,9 @@ export function regexParser(re: RegExp): RowSchema['parse'] {
 
 export function tableRows(source: string, table: TableDef): TableRow[] {
   const rows: TableRow[] = [];
-  for (const line of bodyLines(source).body) {
+  const body = bodyLines(source).body;
+  for (let i = 0; i < body.length; i++) {
+    const line = body[i];
     const text = line.text.trim();
     for (const schema of table.schemas) {
       const parsed = schema.parse(text);
@@ -79,7 +100,15 @@ export function tableRows(source: string, table: TableDef): TableRow[] {
       const offset = line.text.indexOf(text);
       const ranges: Record<string, [number, number]> = {};
       for (const [k, [a, b]] of Object.entries(parsed.ranges)) ranges[k] = [a + offset, b + offset];
-      rows.push({ line, schema, values: parsed.values, ranges });
+      // まとまりの行は、次の } の行までを 1 つの行とし、中の行は読み飛ばす
+      let end = line;
+      if (schema.block) {
+        const close = body.findIndex((l, j) => j > i && l.text.trim() === '}');
+        if (close < 0) break;
+        end = body[close];
+        i = close;
+      }
+      rows.push({ line, end, text: source.slice(line.from, end.to), schema, values: parsed.values, ranges });
       break;
     }
   }
@@ -98,16 +127,37 @@ export function setCell(row: TableRow, field: string, value: string): ChangeSpec
 }
 
 export function deleteRow(source: string, row: TableRow): ChangeSpec {
-  return removeLine(source, row.line);
+  return row.end === row.line ? removeLine(source, row.line) : removeLines(source, row.line, row.end);
 }
 
-/** after の後ろ（null なら表の最後の行の後ろ、表が空なら図種の宣言行の後ろ）に行を足す */
+/** row と、row に属する後ろの行（owns・nested）のうち最後の行 */
+export function rowScope(rows: TableRow[], row: TableRow): TableRow {
+  const { owns, nested, kind } = row.schema;
+  const width = indentOf(row.line.text).length;
+  let i = rows.indexOf(row);
+  while (i >= 0 && i + 1 < rows.length) {
+    const next = rows[i + 1];
+    const owned = (owns === '*' ? next.schema.kind !== kind : !!owns?.includes(next.schema.kind)) || (nested && indentOf(next.line.text).length > width);
+    if (!owned) break;
+    i++;
+  }
+  return rows[i] ?? row;
+}
+
+/**
+ * after の後ろ（null なら表の最後の行の後ろ、表が空なら図種の宣言行の後ろ）に行を足す。
+ * after に属する行（section の中のタスクなど）があれば、その後ろに足す。
+ * 表の最後にしか足せない行（appendOnly）は、after にかかわらず最後に足す
+ */
 export function addRow(source: string, rows: TableRow[], schema: RowSchema, after: TableRow | null): ChangeSpec {
-  const ref = after ?? rows.at(-1) ?? null;
+  const own = schema.appendOnly ? null : after;
+  const ref = own ? rowScope(rows, own) : (rows.at(-1) ?? null);
   const { header, body } = bodyLines(source);
-  const anchor = ref?.line ?? body.at(-1) ?? header;
-  const indent = ref ? indentOf(ref.line.text) : body[0] ? indentOf(body[0].text) || '    ' : '    ';
-  const text = indent + schema.format(schema.defaults);
+  const anchor = ref?.end ?? body.at(-1) ?? header;
+  const like = own ?? ref;
+  const indent = like ? indentOf(like.line.text) : body[0] ? indentOf(body[0].text) || '    ' : '    ';
+  const before = ref ? rows.slice(0, rows.indexOf(ref) + 1) : [];
+  const text = indent + schema.format(schema.next ? schema.next(before) : schema.defaults);
   if (!anchor) return { from: source.length, insert: (source.endsWith('\n') || source === '' ? '' : '\n') + text + '\n' };
   return { from: anchor.to, insert: '\n' + text };
 }
@@ -119,8 +169,8 @@ export function moveRow(rows: TableRow[], i: number, dir: -1 | 1): ChangeSpec[] 
   if (!a || !b) return null;
   const [first, second] = dir < 0 ? [b, a] : [a, b];
   return [
-    { from: first.line.from, to: first.line.to, insert: second.line.text },
-    { from: second.line.from, to: second.line.to, insert: first.line.text },
+    { from: first.line.from, to: first.end.to, insert: second.text },
+    { from: second.line.from, to: second.end.to, insert: first.text },
   ];
 }
 

@@ -1,8 +1,8 @@
 import type { ChangeSpec } from '@codemirror/state';
 import { withValue, type DiagramPlugin, type DiagramTarget, type PropertyField, type SourceRange } from './types';
 import { labelText, withGeneric } from './generic';
-import { bodyLines, escapeRe, indentOf, insertLineAfter, isComment, splitLines, uniqueId, type SourceLine } from './source';
-import { removeLines } from './lineOps';
+import { bodyLines, escapeRe, indentOf, insertLineAfter, isComment, uniqueId, type SourceLine } from './source';
+import { removeLineSet } from './lineOps';
 import { addHitArea, matchInOrder } from './svg';
 import { keywordFields, setKeyword, type KeywordSpec } from './keywordLine';
 import { t } from '../i18n';
@@ -166,20 +166,6 @@ function groupTree(p: ParsedArchitecture, id: string): Set<string> {
     }
   }
   return inside;
-}
-
-/** 行をまとめて消す変更（隣り合う行は 1 つの範囲にまとめる。最後の行を消すときに前の改行と重ならないように） */
-function removeLineSet(source: string, indices: Set<number>): ChangeSpec[] {
-  const lines = splitLines(source);
-  const out: ChangeSpec[] = [];
-  const sorted = [...indices].sort((a, b) => a - b);
-  for (let i = 0; i < sorted.length; ) {
-    let j = i;
-    while (j + 1 < sorted.length && sorted[j + 1] === sorted[j] + 1) j++;
-    out.push(removeLines(source, lines[sorted[i]], lines[sorted[j]]));
-    i = j + 1;
-  }
-  return out;
 }
 
 /** ids の要素（サービス・junction・グループ）を消す変更。つながる線の行も消し、align からも外す */

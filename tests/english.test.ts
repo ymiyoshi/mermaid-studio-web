@@ -33,6 +33,25 @@ const TYPES: Record<string, string> = {
   sankey: 'sankey',
   requirement: 'requirement',
   xychart: 'xychart',
+  swimlane: 'swimlane',
+  agentflow: 'agentflow',
+  ishikawa: 'ishikawa',
+  'ishikawa-full': 'ishikawa',
+  treeview: 'treeView',
+  'treeview-full': 'treeView',
+  venn: 'venn',
+  'venn-full': 'venn',
+  cynefin: 'cynefin',
+  wardley: 'wardley',
+  'wardley-full': 'wardley',
+  eventmodeling: 'eventmodeling',
+  railroad: 'railroadEbnf',
+  'railroad-call': 'railroad',
+  'railroad-abnf': 'railroadAbnf',
+  'railroad-peg': 'railroadPeg',
+  packet: 'packet',
+  radar: 'radar',
+  treemap: 'treemap',
 };
 
 const JAPANESE = /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u;
@@ -78,6 +97,29 @@ describe('英語の UI', () => {
       }
     }
   });
+
+  for (const [id, type] of Object.entries(TYPES)) {
+    it(`${id}: プロパティパネルの欄の名前・説明・選択肢に、ソースに無い日本語が出ない`, () => {
+      const f = all[id];
+      document.body.innerHTML = `<div>${f.svg}</div>`;
+      const plugin = pluginFor(type);
+      const refs = plugin
+        .mapTargets(document.querySelector('svg')!, f.source)
+        .map((x) => x.ref)
+        .filter((r): r is ElementRef => !!r);
+      // 図の要素の種類ごとに 1 つずつと、図全体
+      const kinds = [...new Map(refs.map((r) => [r.kind, r])).values()];
+      for (const ref of [null, ...kinds]) {
+        for (const field of plugin.inspect?.(f.source, ref) ?? []) {
+          const where = `${id} ${ref?.kind ?? '図全体'} ${field.id}`;
+          // 値や、ソースから取った選択肢（名前など）は日本語でもよい
+          expect(newJapanese(f.source, field.label), where).toEqual([]);
+          expect(newJapanese(f.source, field.placeholder ?? ''), where).toEqual([]);
+          for (const o of field.options ?? []) expect(newJapanese(f.source, o.label), where).toEqual([]);
+        }
+      }
+    });
+  }
 
   for (const [id, type] of Object.entries(TYPES)) {
     it(`${id}: すべての操作の結果が mermaid の構文として正しく、差し込む文言は英語`, async () => {

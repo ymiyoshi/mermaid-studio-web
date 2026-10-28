@@ -1,5 +1,6 @@
 import { t } from '../i18n';
 import { bodyLines, isComment, type SourceLine } from './source';
+import type { SourceRange } from './types';
 
 // flowchart の文（ノードとリンクの並び）を、ソース上の位置つきで読む。
 // 構文の正しさは mermaid.parse に任せ、ここでは書き換える位置を特定することだけを目的にする。
@@ -71,6 +72,8 @@ export interface Subgraph {
   idRange: { from: number; to: number } | null;
   /** 題名の範囲（括弧・引用符の内側） */
   title: { from: number; to: number } | null;
+  /** ID と題名の書き方の終わり（agentflow の flow では、この後ろに @{ … } が続くことがある） */
+  headTo: number;
   line: SourceLine;
   end: SourceLine | null;
   /** 中の direction の行と、向きの範囲 */
@@ -470,6 +473,8 @@ function readStatements(line: SourceLine): Statement[] | null {
 
 export interface FlowDoc {
   header: SourceLine | null;
+  /** 枠の書き方（agentflow は flow、それ以外は subgraph） */
+  container: 'subgraph' | 'flow';
   statements: Statement[];
   /** 読めなかった文の行（ここに出てくるノードやエッジは書き換えない） */
   unknown: SourceLine[];
@@ -480,11 +485,28 @@ export interface FlowDoc {
   classes: ClassLine[];
   classDefs: ClassDefLine[];
   linkStyles: LinkStyleLine[];
+  /** agentflow の connector の宣言（ノードとして描かれるが、書き方が違う） */
+  connectors: Connector[];
   /** 図本体の行（frontmatter・宣言行・コメント・空行を除く） */
   body: SourceLine[];
 }
 
+/** agentflow の connector の行（connector ID["題名"] / connector ID） */
+export interface Connector {
+  line: SourceLine;
+  id: string;
+  idRange: SourceRange;
+  /** 題名（引用符の内側）。無ければ null */
+  label: SourceRange | null;
+}
+
 const SUBGRAPH = /^(\s*)subgraph\s+(.*?)\s*$/d;
+// agentflow の枠は flow（後ろに @{ view: collapsed } などを付けられる）。global … end は枠を描かないまとまり
+const FLOW = /^(\s*)flow\s+(.*?)\s*(?:@\{.*\})?\s*$/d;
+const GLOBAL = /^\s*global\s*$/;
+const AGENTFLOW = /^\s*agentflow-beta\b/;
+/** agentflow の connector の行（後ろに @{ … } を付けられる） */
+const CONNECTOR = /^\s*connector\s+(?<id>[\p{L}\p{N}_]+)(?:\["(?<q>[^"]*)"\]|\[(?<p>[^\]"]*)\])?/du;
 const SUBGRAPH_END = /^\s*end\s*;?\s*$/;
 const DIRECTION = /^\s*direction\s+(TB|TD|BT|RL|LR)\b/d;
 const STYLE = /^\s*style\s+(?<id>[^\s,]+)\s+(?<props>.*?)\s*;?\s*$/d;
@@ -512,7 +534,7 @@ export function splitList(r: Ranged): Ranged[] {
 function readSubgraph(line: SourceLine, m: RegExpExecArray): Subgraph {
   const restFrom = line.from + m.indices![2]![0];
   const rest = m[2];
-  const base = { line, end: null, direction: null };
+  const base = { line, end: null, direction: null, headTo: restFrom + rest.length };
   // ID [題名] / ID["題名"]
   const b = /^([^\s[\]"]+)\s*\[\s*(?:"([^"]*)"|([^\]]*?))\s*\]$/d.exec(rest);
   if (b) {
@@ -545,20 +567,50 @@ function readFlowchart(source: string): FlowDoc {
   const { header, body } = bodyLines(source);
   const statements: Statement[] = [];
   const unknown: SourceLine[] = [];
-  const doc: Omit<FlowDoc, 'edges'> = { header, statements, unknown, subgraphs: [], styles: [], classes: [], classDefs: [], linkStyles: [], body };
-  const stack: Subgraph[] = [];
+  const agent = AGENTFLOW.test(header?.text ?? '');
+  const doc: Omit<FlowDoc, 'edges'> = {
+    header,
+    container: agent ? 'flow' : 'subgraph',
+    statements,
+    unknown,
+    subgraphs: [],
+    styles: [],
+    classes: [],
+    classDefs: [],
+    linkStyles: [],
+    connectors: [],
+    body,
+  };
+  // null は global（end で閉じるが、枠ではない）
+  const stack: (Subgraph | null)[] = [];
   for (const line of body) {
     if (isComment(line.text)) continue;
     let m: RegExpExecArray | null;
-    if ((m = SUBGRAPH.exec(line.text))) {
+    if ((m = (agent ? FLOW : SUBGRAPH).exec(line.text))) {
       const sg = readSubgraph(line, m);
       doc.subgraphs.push(sg);
       stack.push(sg);
       continue;
     }
+    if (agent && GLOBAL.test(line.text)) {
+      stack.push(null);
+      continue;
+    }
     if (SUBGRAPH_END.test(line.text)) {
       const sg = stack.pop();
       if (sg) sg.end = line;
+      continue;
+    }
+    if (agent && /^\s*connector\b/.test(line.text)) {
+      const c = CONNECTOR.exec(line.text);
+      if (!c) {
+        unknown.push(line);
+        continue;
+      }
+      const at = (r: [number, number]) => ({ from: line.from + r[0], to: line.from + r[1] });
+      const g = c.indices!.groups!;
+      const label = g.q ?? g.p;
+      doc.connectors.push({ line, id: c.groups!.id, idRange: at(g.id!), label: label ? at(label) : null });
       continue;
     }
     if ((m = DIRECTION.exec(line.text))) {

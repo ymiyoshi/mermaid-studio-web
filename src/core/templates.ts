@@ -252,4 +252,122 @@ Template,Saved,20
     api --> db
 `,
   },
+  {
+    id: 'swimlane',
+    name: t('misc.diagram.swimlane'),
+    text: `swimlane-beta LR
+    subgraph user[利用者]
+        a1([注文する]) --> a2{支払う?}
+    end
+    subgraph shop[お店]
+        s1[受け付ける] --> s2[発送する]
+    end
+    a2 -->|はい| s1
+`,
+  },
+  {
+    id: 'agentflow',
+    name: t('misc.diagram.agentflow'),
+    text: `agentflow-beta LR
+    flow triage["振り分け"]
+        msg[/問い合わせ/] --> intent{用件は?}
+        intent -->|返金| refund[返金の手続き]
+        intent --> answer(回答する)
+    end
+    connector crm["顧客管理"]
+    refund -.- crm
+    refund --x fail{{担当者へ}}
+`,
+  },
+  {
+    id: 'ishikawa',
+    name: t('misc.diagram.ishikawa'),
+    text: `ishikawa-beta
+不良品が多い
+    機械
+        古い設備
+        点検不足
+    方法
+        手順書が無い
+    人
+        教育不足
+    材料
+`,
+  },
+  {
+    id: 'treeview',
+    name: t('misc.diagram.treeview'),
+    text: `treeView-beta
+    mermaid-studio/
+        src/
+            main.tsx ## 入口
+            plugins/ :::highlight
+        package.json
+        README.md
+`,
+  },
+  {
+    id: 'venn',
+    name: t('misc.diagram.venn'),
+    text: `venn-beta
+    title 得意な分野
+    set FE["フロントエンド"]:20
+    set BE["バックエンド"]:15
+    set Ops["運用"]:10
+    union FE,BE["フルスタック"]:4
+    union BE,Ops["SRE"]:3
+`,
+  },
+  {
+    id: 'wardley',
+    name: t('misc.diagram.wardley'),
+    text: `wardley-beta
+title 喫茶店
+anchor "お客さん" [0.95, 0.63]
+component "一杯のお茶" [0.79, 0.61]
+component "茶葉" [0.63, 0.81]
+component "お湯" [0.52, 0.80]
+component "やかん" [0.43, 0.35] (build)
+"お客さん" -> "一杯のお茶"
+"一杯のお茶" -> "茶葉"
+"一杯のお茶" -> "お湯"
+"お湯" -> "やかん"
+evolve "やかん" 0.62
+`,
+  },
+  {
+    id: 'cynefin',
+    name: t('misc.diagram.cynefin'),
+    text: `cynefin-beta
+title 仕事の分類
+complex
+    "新しい市場"
+complicated
+    "性能の改善" "監査"
+clear
+    "パスワードの再発行"
+chaotic
+    "障害対応"
+chaotic --> complex : "落ち着かせる"
+complex --> complicated : "収束させる"
+`,
+  },
+  {
+    id: 'eventmodeling',
+    name: t('misc.diagram.eventmodeling'),
+    text: `eventmodeling
+tf 01 ui CartScreen
+tf 02 cmd AddItem ->> 01
+tf 03 evt ItemAdded ->> 02
+tf 04 rmo CartItems ->> 03
+`,
+  },
+  {
+    id: 'railroad',
+    name: t('misc.diagram.railroad'),
+    text: `railroad-ebnf-beta
+number = [ "-" ] , digit , { digit } ;
+digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+`,
+  },
 ];

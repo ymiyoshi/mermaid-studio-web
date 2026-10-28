@@ -106,10 +106,12 @@ function styleLineChanges(source: string, id: string): ChangeSpec[] {
 export function deleteNode(source: string, id: string): ChangeSpec[] | null {
   const doc = parseFlowchart(source);
   const statements = new Set(nodeRefs(doc, id).map((x) => x.statement));
-  if (statements.size === 0) return null;
+  // agentflow の connector は、宣言の行も消す
+  const conn = doc.connectors.find((c) => c.id === id);
+  if (statements.size === 0 && !conn) return null;
   // 読めなかった行にも出てくるなら、中途半端に消さない
   if (doc.unknown.some((l) => tokenRegex(id).test(l.text))) return null;
-  const changes: ChangeSpec[] = [];
+  const changes: ChangeSpec[] = conn ? [removeLine(source, conn.line)] : [];
   for (const st of statements) {
     const groups = st.groups.map((g) => g.filter((r) => r.id !== id));
     const parts = split(st, groups, () => true);
@@ -352,7 +354,8 @@ export function withLinkStyles(source: string, change: ChangeSpec): ChangeSpec {
   return extra.length ? [change, ...extra] : change;
 }
 
-const HEADER = /^(\s*(?:flowchart|graph))(?:([ \t]+)(TB|TD|BT|RL|LR))?/;
+// swimlane・agentflow は、フローチャートと同じ書き方の図種
+const HEADER = /^(\s*(?:flowchart-elk|flowchart|graph|swimlane-beta|agentflow-beta))(?:([ \t]+)(TB|TD|BT|RL|LR))?/;
 
 export function getDirection(source: string): string {
   const h = bodyLines(source).header;
@@ -375,10 +378,14 @@ export function setDirection(source: string, dir: string): ChangeSpec | null {
 export function renameNode(source: string, from: string, to: string): ChangeSpec[] | null {
   if (!VALID_ID.test(to) || from === to) return null;
   const doc = parseFlowchart(source);
-  if (nodeRefs(doc, to).length > 0) return null; // 既にある ID にはまとめない
+  // 既にある ID にはまとめない
+  if (nodeRefs(doc, to).length > 0 || doc.connectors.some((c) => c.id === to)) return null;
   const refs = nodeRefs(doc, from);
-  if (refs.length === 0) return null;
+  // agentflow の connector は、宣言の行の ID も変える
+  const conn = doc.connectors.find((c) => c.id === from);
+  if (refs.length === 0 && !conn) return null;
   const changes: ChangeSpec[] = refs.map(({ ref }) => ({ from: ref.from, to: ref.idTo, insert: to }));
+  if (conn) changes.push({ from: conn.idRange.from, to: conn.idRange.to, insert: to });
   const token = tokenRegex(from, 'gu');
   for (const line of bodyLines(source).body) {
     if (!/^\s*(class|style|click)\s/.test(line.text)) continue;

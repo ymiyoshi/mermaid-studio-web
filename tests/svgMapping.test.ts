@@ -42,6 +42,25 @@ const TYPES: Record<string, string> = {
   requirement: 'requirement',
   xychart: 'xychart',
   block: 'block',
+  swimlane: 'swimlane',
+  agentflow: 'agentflow',
+  ishikawa: 'ishikawa',
+  'ishikawa-full': 'ishikawa',
+  treeview: 'treeView',
+  'treeview-full': 'treeView',
+  venn: 'venn',
+  'venn-full': 'venn',
+  cynefin: 'cynefin',
+  wardley: 'wardley',
+  'wardley-full': 'wardley',
+  eventmodeling: 'eventmodeling',
+  railroad: 'railroadEbnf',
+  'railroad-call': 'railroad',
+  'railroad-abnf': 'railroadAbnf',
+  'railroad-peg': 'railroadPeg',
+  packet: 'packet',
+  radar: 'radar',
+  treemap: 'treemap',
 };
 
 function load(id: string): { svg: SVGSVGElement; source: string; targets: DiagramTarget[] } {
@@ -60,6 +79,8 @@ describe('すべての図種で共通に成り立つこと', () => {
       const { source, targets } = load(id);
       expect(targets.length).toBeGreaterThan(0);
       const keys = targets.filter((x) => x.ref).map((x) => `${x.ref!.kind}:${x.ref!.id}`);
+      // どの図種も、図の要素を選んで編集できる（ラベルの書き換えだけの汎用の対応付けで終わっていない）
+      expect(keys.length, '図から選べる要素が無い').toBeGreaterThan(0);
       // 同じ要素が上下に 2 回描かれる図（sequence の参加者）は同じ参照を持つ
       if (!id.startsWith('sequence')) expect(new Set(keys).size).toBe(keys.length);
       for (const t of targets) {

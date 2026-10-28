@@ -31,15 +31,16 @@ export function findSubgraph(doc: FlowDoc, id: string): Subgraph | undefined {
   return doc.subgraphs.find((s) => s.id === id);
 }
 
-/** 新しいサブグラフの行（題名つき） */
-function subgraphLines(id: string, title: string, indent: string, inner: string, body: string[]): string {
-  return [`${indent}subgraph ${id} [${title}]`, ...body.map((b) => inner + b), `${indent}end`].join('\n');
+/** 新しいサブグラフの行（題名つき）。agentflow の枠は flow で書く */
+function subgraphLines(doc: FlowDoc, id: string, title: string, indent: string, inner: string, body: string[]): string {
+  const head = doc.container === 'flow' ? `flow ${id}["${title.replace(/"/g, '')}"]` : `subgraph ${id} [${title}]`;
+  return [indent + head, ...body.map((b) => inner + b), `${indent}end`].join('\n');
 }
 
 /** 図の最後に空のサブグラフを足す */
 export function addSubgraph(source: string, id: string, title: string) {
   const { after, indent } = topLevelEnd(source);
-  return insertLineAfter(source, after, subgraphLines(id, title, indent, indent + DEFAULT_STEP, []));
+  return insertLineAfter(source, after, subgraphLines(parseFlowchart(source), id, title, indent, indent + DEFAULT_STEP, []));
 }
 
 /** ノードを新しいサブグラフにまとめる。ノードの今の所属の中に作るので、新しいサブグラフが先に閉じてノードを取る */
@@ -50,10 +51,10 @@ export function groupNode(source: string, nodeId: string, id: string, title: str
     if (!current.end) return null;
     const indent = innerIndent(doc, current);
     const step = indent.slice(indentOf(current.line.text).length) || DEFAULT_STEP;
-    return { from: current.end.from, insert: subgraphLines(id, title, indent, indent + step, [nodeId]) + '\n' };
+    return { from: current.end.from, insert: subgraphLines(doc, id, title, indent, indent + step, [nodeId]) + '\n' };
   }
   const { after, indent } = topLevelEnd(source);
-  return insertLineAfter(source, after, subgraphLines(id, title, indent, indent + DEFAULT_STEP, [nodeId]));
+  return insertLineAfter(source, after, subgraphLines(doc, id, title, indent, indent + DEFAULT_STEP, [nodeId]));
 }
 
 /** 文が、ノード 1 つだけを書いた 1 行か */
@@ -111,14 +112,17 @@ export function renameSubgraph(source: string, from: string, to: string): Change
 }
 
 export function setSubgraphTitle(source: string, id: string, title: string): ChangeSpec | null {
-  const sg = findSubgraph(parseFlowchart(source), id);
+  const doc = parseFlowchart(source);
+  const sg = findSubgraph(doc, id);
   if (!sg || /[[\]"\n]/.test(title)) return null;
   if (sg.title) {
-    // ID のある書き方では、題名を空にすると [題名] ごと消す（ID が表示される）
-    if (title === '') return sg.idRange ? { from: sg.idRange.to, to: sg.line.to, insert: '' } : null;
+    // ID のある書き方では、題名を空にすると [題名] ごと消す（ID が表示される）。後ろの @{ … } は残す
+    if (title === '') return sg.idRange ? { from: sg.idRange.to, to: sg.headTo, insert: '' } : null;
     return { from: sg.title.from, to: sg.title.to, insert: title };
   }
-  return title && sg.idRange ? { from: sg.idRange.to, insert: ` [${title}]` } : null;
+  // agentflow の flow は、ID のすぐ後ろに ["題名"] と書く
+  const head = doc.container === 'flow' ? `["${title}"]` : ` [${title}]`;
+  return title && sg.idRange ? { from: sg.idRange.to, insert: head } : null;
 }
 
 export function setSubgraphDirection(source: string, id: string, dir: string): ChangeSpec | null {

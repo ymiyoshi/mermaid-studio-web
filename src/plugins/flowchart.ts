@@ -34,7 +34,7 @@ import {
   unwrapSubgraph,
 } from './flowchartSubgraph';
 import { classNames, classOf, frontmatterTitle, linkStyleProp, setClass, setFrontmatterTitle, setLinkStyleProp, setStyleProp, styleProp } from './flowchartStyle';
-import { addHitArea, edgeLabels, matchInOrder } from './svg';
+import { addHitArea, edgeLabels, idFromSvg, matchInOrder } from './svg';
 import { topLevelEnd } from './lineOps';
 import { regexParser, type TableDef } from './table';
 import { t } from '../i18n';
@@ -57,10 +57,10 @@ const DIRECTIONS = [
   { value: 'RL', label: t('fc.dir.RL') },
 ];
 
-const EDGE_ARROWS = [...ARROWS, { value: '~~~', label: t('fc.arrow.invisible') }];
+export const EDGE_ARROWS = [...ARROWS, { value: '~~~', label: t('fc.arrow.invisible') }];
 const LENGTHS = [1, 2, 3, 4].map((n) => ({ value: String(n), label: n === 1 ? t('fc.length.normal') : t('fc.length.n', { n: String(n) }) }));
 
-const SHAPE_OPTIONS = [
+export const SHAPE_OPTIONS = [
   ...SHAPE_CHOICES.map((s) => ({ value: s.name, label: s.label })),
   ...META_SHAPES.map((s) => ({ value: `@${s.name}`, label: t('fc.shape.metaOption', { label: s.label, name: s.name }) })),
 ];
@@ -72,10 +72,8 @@ const STYLE_FIELDS = [
   { key: 'color', label: t('fc.style.color') },
 ];
 
-export function nodeIdFromSvg(el: Element): string | null {
-  const m = /-flowchart-(.+)-\d+$/.exec(el.id);
-  return m ? m[1] : null;
-}
+/** SVG のノードの id（…-<prefix>-<ID>-<連番>）からノードの ID を取り出す */
+export const nodeIdFromSvg = (el: Element, prefix = 'flowchart') => idFromSvg(el, prefix);
 
 /** ノード id のラベルのソース上の範囲。複数回定義されていれば、mermaid と同じく最後の定義を使う */
 export function findNodeLabel(source: string, id: string): SourceRange | null {
@@ -84,6 +82,8 @@ export function findNodeLabel(source: string, id: string): SourceRange | null {
 
 /** 読み取り済みの文書から、ノードのラベルの範囲を求める */
 function labelRange(doc: FlowDoc, id: string): SourceRange | null {
+  const conn = doc.connectors.find((c) => c.id === id);
+  if (conn) return conn.label;
   const def = nodeDefinition(doc, id);
   if (def?.shape) return { from: def.shape.labelFrom, to: def.shape.labelTo };
   return def?.meta?.label ?? null;
@@ -91,6 +91,9 @@ function labelRange(doc: FlowDoc, id: string): SourceRange | null {
 
 /** ラベルの無いノードに、ラベルを差し込める位置 */
 function nodeLabelInsert(source: string, doc: FlowDoc, id: string): DiagramTarget['insertAt'] {
+  // agentflow の connector は、宣言の行に題名を付ける（線の行に付けると、ふつうのノードになる）
+  const conn = doc.connectors.find((c) => c.id === id);
+  if (conn) return conn.label ? undefined : { at: conn.idRange.to, prefix: '["', suffix: '"]' };
   const def = nodeDefinition(doc, id);
   if (def?.meta) {
     if (def.meta.label) return undefined;
@@ -156,14 +159,27 @@ const CLASS_DEF_TABLE: TableDef = {
   ],
 };
 
-export const flowchartPlugin: DiagramPlugin = {
-  type: 'flowchart-v2',
+/** フローチャートと同じ書き方の図種（agentflow）の違い */
+export interface FlowVariant {
+  /** mermaid.parse が返す diagramType */
+  type: string;
+  /** SVG のノードの id（…-<prefix>-<ID>-<連番>）の prefix */
+  nodePrefix: string;
+  /** 選べる形 */
+  shapes: { value: string; label: string }[];
+  /** 選べる矢印 */
+  arrows: { value: string; label: string }[];
+}
+
+/** フローチャートのプラグイン。書き方が同じ図種（agentflow）は、形と矢印の選択肢を変えて使う */
+export const flowPlugin = (v: FlowVariant): DiagramPlugin => ({
+  type: v.type,
 
   mapTargets(svg, source) {
     const doc = parseFlowchart(source);
     const nodes: DiagramTarget[] = [];
     svg.querySelectorAll('g.node').forEach((g, i) => {
-      const id = nodeIdFromSvg(g);
+      const id = nodeIdFromSvg(g, v.nodePrefix);
       if (!id) return;
       const labelEl = g.querySelector('foreignObject, text') ?? g;
       const range = labelRange(doc, id);
@@ -236,6 +252,13 @@ export const flowchartPlugin: DiagramPlugin = {
     }
     if (ref.kind === 'node') {
       const label = labelRange(doc, ref.id);
+      // agentflow の connector は、形も所属も持たない（宣言の行の ID と題名だけ）
+      if (doc.connectors.some((c) => c.id === ref.id)) {
+        return [
+          { id: 'id', label: 'ID', type: 'text', value: ref.id, commitOnBlur: true },
+          { id: 'label', label: t('fc.prop.label'), type: 'text', value: label ? source.slice(label.from, label.to) : '', placeholder: ref.id },
+        ];
+      }
       const shape = shapeValue(source, ref.id);
       const groups = [{ value: '', label: t('fc.none') }, ...doc.subgraphs.map((s) => ({ value: s.id, label: s.id }))];
       const classes = [{ value: '', label: t('fc.none') }, ...classNames(doc).map((c) => ({ value: c, label: c }))];
@@ -243,7 +266,7 @@ export const flowchartPlugin: DiagramPlugin = {
       return [
         { id: 'id', label: 'ID', type: 'text', value: ref.id, commitOnBlur: true },
         { id: 'label', label: t('fc.prop.label'), type: 'text', value: label ? source.slice(label.from, label.to) : ref.id },
-        { id: 'shape', label: t('fc.prop.shape'), type: 'shape', value: shape, options: withValue(SHAPE_OPTIONS, shape) },
+        { id: 'shape', label: t('fc.prop.shape'), type: 'shape', value: shape, options: withValue(v.shapes, shape) },
         {
           id: 'subgraph',
           label: t('fc.prop.subgraph'),
@@ -267,7 +290,7 @@ export const flowchartPlugin: DiagramPlugin = {
         { id: 'from', label: t('fc.prop.from'), type: 'select', value: info.from, options: ends },
         { id: 'to', label: t('fc.prop.to'), type: 'select', value: info.to, options: ends },
         { id: 'label', label: t('fc.prop.label'), type: 'text', value: info.label, placeholder: t('fc.none') },
-        { id: 'arrow', label: t('fc.prop.arrow'), type: 'select', value: kind, options: withValue(EDGE_ARROWS, kind) },
+        { id: 'arrow', label: t('fc.prop.arrow'), type: 'select', value: kind, options: withValue(v.arrows, kind) },
         { id: 'length', label: t('fc.prop.length'), type: 'select', value: String(parts?.length ?? 1), options: withValue(LENGTHS, String(parts?.length ?? 1)), readonly: !parts },
         { id: 'stroke', label: t('fc.prop.stroke'), type: 'text', value: linkStyleProp(doc, info.index, 'stroke'), placeholder: t('fc.ph.stroke') },
         { id: 'stroke-width', label: t('fc.prop.strokeWidth'), type: 'text', value: linkStyleProp(doc, info.index, 'stroke-width'), placeholder: t('fc.ph.strokeWidth') },
@@ -294,6 +317,9 @@ export const flowchartPlugin: DiagramPlugin = {
       return null;
     }
     if (ref.kind === 'node') {
+      // connector で変えられるのは ID と題名だけ（題名は引用符の中なので " は書けない）
+      const isConnector = doc.connectors.some((c) => c.id === ref.id);
+      if (isConnector && (field !== 'id' && field !== 'label' || value.includes('"'))) return null;
       if (field === 'shape') return setShape(source, ref.id, value);
       if (field === 'id') return findSubgraph(doc, value) ? null : renameNode(source, ref.id, value);
       if (field === 'subgraph') return moveNodeTo(source, ref.id, value);
@@ -337,7 +363,7 @@ export const flowchartPlugin: DiagramPlugin = {
       id: 'add-node',
       title: t('fc.action.addNode'),
       arity: 0,
-      shapes: SHAPE_OPTIONS,
+      shapes: v.shapes,
       run(source, _refs, shape = 'rect') {
         const id = uniqueId(source, 'N');
         const node = nodeWithShape(id, NEW_LABEL, shape);
@@ -362,7 +388,7 @@ export const flowchartPlugin: DiagramPlugin = {
       title: t('fc.action.addChild'),
       arity: 1,
       key: 'Tab',
-      shapes: SHAPE_OPTIONS,
+      shapes: v.shapes,
       run(source, [from], shape = 'rect') {
         const id = uniqueId(source, 'N');
         const node = nodeWithShape(id, NEW_LABEL, shape);
@@ -379,7 +405,7 @@ export const flowchartPlugin: DiagramPlugin = {
       arity: 1,
       appliesTo: ['subgraph'],
       key: 'Tab',
-      shapes: SHAPE_OPTIONS,
+      shapes: v.shapes,
       run(source, [ref], shape = 'rect') {
         const doc = parseFlowchart(source);
         const sg = findSubgraph(doc, ref.id);
@@ -411,7 +437,7 @@ export const flowchartPlugin: DiagramPlugin = {
       title: t('fc.action.insertNode'),
       arity: 1,
       appliesTo: ['edge'],
-      shapes: SHAPE_OPTIONS,
+      shapes: v.shapes,
       run(source, [ref], shape = 'rect') {
         const id = uniqueId(source, 'N');
         const node = nodeWithShape(id, NEW_LABEL, shape);
@@ -491,4 +517,6 @@ export const flowchartPlugin: DiagramPlugin = {
       },
     },
   ],
-};
+});
+
+export const flowchartPlugin = flowPlugin({ type: 'flowchart-v2', nodePrefix: 'flowchart', shapes: SHAPE_OPTIONS, arrows: EDGE_ARROWS });
