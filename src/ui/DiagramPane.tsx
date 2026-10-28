@@ -344,7 +344,10 @@ export function DiagramPane() {
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    if ((e.target as Element).closest('.inline-label-editor')) return;
+    const target = e.target as Element;
+    // 形の一覧の中のキー（Tab での移動・Enter での選択）と、操作ボタンの上の Enter は、ボタン自身に任せる
+    if (target.closest('.inline-label-editor, .shape-action-palette')) return;
+    if (e.key === 'Enter' && target.closest('.element-toolbar button')) return;
     if (e.key === 'Escape') {
       if (reorder.current) endReorder();
       else if (menu) setMenu(null);
@@ -457,16 +460,27 @@ export function DiagramPane() {
             style={toolbarPosition(toolbarRect, viewport.current)}
             onPointerDown={(e) => e.stopPropagation()}
           >
-            {buttonActions.map((a) => (
-              <button
-                key={a.id}
-                className={`btn${a.danger ? ' danger' : ''}`}
-                onClick={() => triggerAction(a)}
-                title={a.key ? `${a.title} (${a.key})` : a.title}
-              >
-                {a.title}
-              </button>
-            ))}
+            {buttonActions.map((a) =>
+              a.shapes && a.arity === 1 ? (
+                <ShapeActionButton
+                  key={a.id}
+                  action={{ ...a, shapes: a.shapes }}
+                  disabled={false}
+                  className={a.danger ? 'danger' : undefined}
+                  title={a.key ? `${a.title} (${a.key})` : a.title}
+                  run={(shape) => void runAction(a, [selected.ref!], shape)}
+                />
+              ) : (
+                <button
+                  key={a.id}
+                  className={`btn${a.danger ? ' danger' : ''}`}
+                  onClick={() => triggerAction(a)}
+                  title={a.key ? `${a.title} (${a.key})` : a.title}
+                >
+                  {a.title}
+                </button>
+              ),
+            )}
           </div>
         )}
         {menu && selected && (

@@ -362,11 +362,14 @@ export const flowchartPlugin: DiagramPlugin = {
       title: t('fc.action.addChild'),
       arity: 1,
       key: 'Tab',
-      run(source, [from]) {
+      shapes: SHAPE_OPTIONS,
+      run(source, [from], shape = 'rect') {
         const id = uniqueId(source, 'N');
+        const node = nodeWithShape(id, NEW_LABEL, shape);
+        if (!node) return null;
         const line = lastLineOf(source, from.id);
         const { after, indent } = line ? { after: line, indent: indentOf(line.text) } : topLevelEnd(source, DEFAULT_INDENT);
-        const res = addLine(source, after, indent, `${from.id} --> ${id}[${NEW_LABEL}]`, id);
+        const res = addLine(source, after, indent, `${from.id} --> ${node}`, id);
         return { ...res, change: withLinkStyles(source, res.change), label: t('fc.history.addChild', { id, from: from.id }) };
       },
     },
@@ -376,11 +379,13 @@ export const flowchartPlugin: DiagramPlugin = {
       arity: 1,
       appliesTo: ['subgraph'],
       key: 'Tab',
-      run(source, [ref]) {
+      shapes: SHAPE_OPTIONS,
+      run(source, [ref], shape = 'rect') {
         const doc = parseFlowchart(source);
         const sg = findSubgraph(doc, ref.id);
         const id = uniqueId(source, 'N');
-        const change = sg && insertIntoSubgraph(doc, sg, `${id}[${NEW_LABEL}]`);
+        const node = nodeWithShape(id, NEW_LABEL, shape);
+        const change = sg && node && insertIntoSubgraph(doc, sg, node);
         if (!change) return null;
         return { change, label: t('fc.history.addInside', { id, sg: ref.id }), selAfter: rangeInInserted(change, NEW_LABEL), focus: { kind: 'node', id } };
       },
@@ -406,10 +411,11 @@ export const flowchartPlugin: DiagramPlugin = {
       title: t('fc.action.insertNode'),
       arity: 1,
       appliesTo: ['edge'],
-      run(source, [ref]) {
+      shapes: SHAPE_OPTIONS,
+      run(source, [ref], shape = 'rect') {
         const id = uniqueId(source, 'N');
-        const node = `${id}[${NEW_LABEL}]`;
-        const change = insertNodeOnEdge(source, Number(ref.id), node);
+        const node = nodeWithShape(id, NEW_LABEL, shape);
+        const change = node && insertNodeOnEdge(source, Number(ref.id), node);
         if (!change) return null;
         return {
           change: withLinkStyles(source, change),

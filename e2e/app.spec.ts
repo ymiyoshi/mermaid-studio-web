@@ -141,6 +141,56 @@ test('ツールバーの ▾ から形を選んでノードを足し、そのま
   expect((await historyLabels(page)).slice(-2)).toEqual(['ノード N1 を追加', 'ラベル変更「分岐」']);
 });
 
+test('図の上の「＋ 次のノード」の ▾ から形を選んで足す（一覧は図の表示からはみ出さない）', async ({ page }) => {
+  await openApp(page);
+  // 上の方と下の方のノードで開く（一覧が下に入らなければ上に出す）
+  for (const label of ['開始', '終了']) {
+    await node(page, label).click();
+    await page.locator('.element-toolbar').getByRole('button', { name: '＋ 次のノード（形を選ぶ）' }).click();
+    const palette = page.locator('.element-toolbar .shape-action-palette');
+    await expect(palette).toBeVisible();
+    const vp = (await page.locator('.diagram-viewport').boundingBox())!;
+    const box = (await palette.boundingBox())!;
+    expect(box.y).toBeGreaterThanOrEqual(vp.y);
+    expect(box.y + box.height).toBeLessThanOrEqual(vp.y + vp.height + 1);
+    expect(box.x + box.width).toBeLessThanOrEqual(vp.x + vp.width + 1);
+    await page.keyboard.press('Escape');
+    await expect(palette).toHaveCount(0);
+  }
+
+  await node(page, '開始').click();
+  await page.locator('.element-toolbar').getByRole('button', { name: '＋ 次のノード（形を選ぶ）' }).click();
+  await page.locator('.element-toolbar .shape-action-palette').getByRole('button', { name: '円柱（DB）', exact: true }).click();
+  await expect.poll(() => editorText(page)).toContain('A --> N1[(新しいノード)]');
+  await page.locator('.inline-label-editor input').fill('保存先');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => editorText(page)).toContain('A --> N1[(保存先)]');
+  expect((await historyLabels(page)).slice(-2)).toEqual(['ノード N1 を A の次に追加', 'ラベル変更「保存先」']);
+});
+
+test('図の上の形の一覧はキーボードで選べ、別の ▾ を開くと前の一覧は閉じる', async ({ page }) => {
+  await openApp(page);
+  await setEditorText(page, 'mindmap\n  root((中心))\n    枝');
+  await page.locator('.diagram-canvas g.mindmap-node', { hasText: '枝' }).click();
+  const toolbar = page.locator('.element-toolbar');
+  const palettes = toolbar.locator('.shape-action-palette');
+  await toolbar.getByRole('button', { name: '＋ 子トピック（形を選ぶ）' }).click();
+  await expect(palettes).toHaveCount(1);
+  // 別の ▾ を押すと、前の一覧は閉じる
+  await toolbar.getByRole('button', { name: '＋ 兄弟トピック（形を選ぶ）' }).click();
+  await expect(palettes).toHaveCount(1);
+  await expect(toolbar.getByRole('button', { name: '＋ 子トピック（形を選ぶ）' })).toHaveAttribute('aria-expanded', 'false');
+
+  // Tab で一覧の中を動いても、トピックは足されない。Enter で選んだ形で足す
+  const before = await editorText(page);
+  await palettes.getByRole('button').first().focus();
+  await page.keyboard.press('Tab');
+  await expect(palettes.getByRole('button').nth(1)).toBeFocused();
+  expect(await editorText(page)).toBe(before);
+  await page.keyboard.press('Enter');
+  await expect.poll(() => editorText(page)).toContain('    n1((新しいトピック))');
+});
+
 test('Ctrl を押しながら複数のノードを選び、形をまとめて変えてから、まとめて消す', async ({ page }) => {
   await openApp(page);
   await node(page, '開始').click();

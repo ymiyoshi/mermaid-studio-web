@@ -76,6 +76,16 @@ function setShape(source: string, m: MindNode, shape: string): ChangeSpec | null
   return { from: m.body.from - (m.id?.length ?? 0), to: m.body.to, insert: `${id}${s.open}${quoted}${s.close}` };
 }
 
+/** 形の一覧（図の上の「＋」の ▾ と、プロパティパネルの形の欄） */
+const SHAPE_OPTIONS = [{ value: 'default', label: t('mm.shape.default') }, ...MINDMAP_SHAPES.map((s) => ({ value: s.name, label: s.label }))];
+
+/** 形を付けた新しいトピックの書き方（形を付けるには ID が要る。読めない形なら null） */
+function newTopic(source: string, shape: string): string | null {
+  if (shape === 'default') return NEW_TOPIC;
+  const s = MINDMAP_SHAPES.find((x) => x.name === shape);
+  return s ? `${uniqueId(source, 'n')}${s.open}${NEW_TOPIC}${s.close}` : null;
+}
+
 export const mindmapPlugin: DiagramPlugin = {
   type: 'mindmap',
 
@@ -103,7 +113,7 @@ export const mindmapPlugin: DiagramPlugin = {
         label: t('mm.field.shape'),
         type: 'shape',
         value: m.shape?.name ?? 'default',
-        options: [{ value: 'default', label: t('mm.shape.default') }, ...MINDMAP_SHAPES.map((s) => ({ value: s.name, label: s.label }))],
+        options: SHAPE_OPTIONS,
       },
       { id: 'depth', label: t('mm.field.depth'), type: 'text', value: String(m.node.depth), readonly: true },
     ];
@@ -124,11 +134,13 @@ export const mindmapPlugin: DiagramPlugin = {
       arity: 1,
       appliesTo: ['topic'],
       key: 'Tab',
-      run(source, [ref]) {
+      shapes: SHAPE_OPTIONS,
+      run(source, [ref], shape = 'default') {
         const nodes = mindNodes(source);
         const m = nodes[Number(ref.id)];
-        if (!m) return null;
-        const change = addChild(m.node, NEW_TOPIC);
+        const text = newTopic(source, shape);
+        if (!m || !text) return null;
+        const change = addChild(m.node, text);
         // 新しいノードは、親の部分木の最後の次の番号になる
         const newIndex = lastIndexIn(m.node) + 1;
         return { change, label: t('mm.history.add'), focus: { kind: 'topic', id: String(newIndex) } };
@@ -139,10 +151,12 @@ export const mindmapPlugin: DiagramPlugin = {
       title: t('mm.action.addSibling'),
       arity: 1,
       appliesTo: ['topic'],
-      run(source, [ref]) {
+      shapes: SHAPE_OPTIONS,
+      run(source, [ref], shape = 'default') {
         const m = mindNodes(source)[Number(ref.id)];
-        if (!m || !m.node.parent) return null;
-        const change = addSibling(m.node, NEW_TOPIC);
+        const text = newTopic(source, shape);
+        if (!m || !m.node.parent || !text) return null;
+        const change = addSibling(m.node, text);
         return { change, label: t('mm.history.add'), focus: { kind: 'topic', id: String(lastIndexIn(m.node) + 1) } };
       },
     },

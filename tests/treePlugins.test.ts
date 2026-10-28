@@ -11,8 +11,8 @@ const apply = (source: string, spec: ChangeSpec | null | undefined) => {
   return ChangeSet.of(spec!, source.length).apply(Text.of(source.split('\n'))).toString();
 };
 const valid = async (s: string) => expect(mermaid.parse(s)).resolves.toBeTruthy();
-const act = (p: DiagramPlugin, id: string, source: string, refs: ElementRef[] = []) => {
-  const res = p.actions!.find((a) => a.id === id)!.run(source, refs);
+const act = (p: DiagramPlugin, id: string, source: string, refs: ElementRef[] = [], shape?: string) => {
+  const res = p.actions!.find((a) => a.id === id)!.run(source, refs, shape);
   expect(res).toBeTruthy();
   return { out: apply(source, res!.change), res: res! };
 };
@@ -46,6 +46,24 @@ describe('mindmap', () => {
     ({ out } = act(mindmapPlugin, 'add-child', MM, [{ kind: 'topic', id: '5' }]));
     expect(out).toBe(MM.replace('      図\n', '      図\n        新しいトピック\n'));
     await valid(out);
+  });
+
+  it('形を選んで子・兄弟を足せる（形を付けるときは ID を付ける。どの形も mermaid.parse を通る）', async () => {
+    for (const id of ['add-child', 'add-sibling']) {
+      const action = mindmapPlugin.actions!.find((a) => a.id === id)!;
+      for (const { value } of action.shapes!) {
+        const { out, res } = act(mindmapPlugin, id, MM, [{ kind: 'topic', id: '1' }], value);
+        await valid(out);
+        expect(res.focus).toEqual({ kind: 'topic', id: '3' });
+        // 足したトピックの形が読める（既存の行は変わらない）
+        const added = mindNodes(out)[3];
+        expect(out.slice(added.label.from, added.label.to)).toBe('新しいトピック');
+        expect(added.shape?.name ?? 'default').toBe(value);
+        expect(out.replace(added.node.line.text + '\n', '')).toBe(MM);
+      }
+      expect(action.run(MM, [{ kind: 'topic', id: '1' }], 'no-such-shape')).toBeNull();
+    }
+    expect(act(mindmapPlugin, 'add-child', MM, [{ kind: 'topic', id: '1' }], 'cloud').out).toContain('      全図種\n      n1)新しいトピック(\n    編集');
   });
 
   it('部分木ごと削除・移動する', async () => {

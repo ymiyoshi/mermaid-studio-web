@@ -11,8 +11,8 @@ import { canMoveNode } from '../src/plugins/flowchartSubgraph';
 
 const apply = (source: string, spec: ChangeSpec) => ChangeSet.of(spec, source.length).apply(Text.of(source.split('\n'))).toString();
 
-function run(actionId: string, source: string, refs: { kind: string; id: string }[]) {
-  const res = flowchartPlugin.actions!.find((a) => a.id === actionId)!.run(source, refs);
+function run(actionId: string, source: string, refs: { kind: string; id: string }[], shape?: string) {
+  const res = flowchartPlugin.actions!.find((a) => a.id === actionId)!.run(source, refs, shape);
   return res && { ...res, after: apply(source, res.change) };
 }
 
@@ -281,6 +281,34 @@ describe('flowchart: サブグラフ', () => {
     expect(inside.after).toContain('        H\n        N1[新しいノード]\n    end');
     expect(await membersOf(inside.after, 'S1')).toContain('N1');
     await expect(mermaid.parse(add.after)).resolves.toBeTruthy();
+  });
+
+  it('図の上の「＋」でも形を選んで足せる（次のノード・サブグラフの中・エッジの間。どの形も mermaid.parse を通る）', async () => {
+    const cases: [string, { kind: string; id: string }][] = [
+      ['add-child', { kind: 'node', id: 'A' }],
+      ['add-inside', { kind: 'subgraph', id: 'S1' }],
+      ['insert-node', { kind: 'edge', id: '1' }],
+    ];
+    for (const [id, ref] of cases) {
+      const shapes = flowchartPlugin.actions!.find((a) => a.id === id)!.shapes!;
+      expect(shapes.map((x) => x.value)).toEqual(expect.arrayContaining(['rect', 'rhombus', '@doc']));
+      for (const { value } of shapes) {
+        const r = run(id, SRC, [ref], value)!;
+        expect(r.focus).toEqual({ kind: 'node', id: 'N1' });
+        expect(r.after.slice(r.selAfter!.anchor, r.selAfter!.head), `${id} ${value}`).toBe('新しいノード');
+        await expect(mermaid.parse(r.after), `${id} ${value}`).resolves.toBeTruthy();
+      }
+      expect(run(id, SRC, [ref], 'no-such-shape')).toBeNull();
+    }
+    // 形と、つながり・所属が mermaid にそのまま読まれる
+    const child = run('add-child', SRC, [{ kind: 'node', id: 'A' }], 'rhombus')!;
+    expect((await db(child.after)).getVertices().get('N1')?.type).toBe('diamond');
+    expect((await db(child.after)).getEdges()).toContainEqual(expect.objectContaining({ start: 'A', end: 'N1' }));
+    const inside = run('add-inside', SRC, [{ kind: 'subgraph', id: 'S1' }], '@doc')!;
+    expect(inside.after).toContain('        N1@{ shape: doc, label: "新しいノード" }\n    end');
+    expect(await membersOf(inside.after, 'S1')).toContain('N1');
+    const between = run('insert-node', SRC, [{ kind: 'edge', id: '1' }], 'cylinder')!;
+    expect(between.after).toContain('B -->|はい| N1[(新しいノード)] --> C');
   });
 
   it('ノードをサブグラフにまとめる（サブグラフの中のノードは、その中に入れ子で作る）', async () => {
