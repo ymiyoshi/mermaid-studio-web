@@ -76,8 +76,9 @@ E2E の `test.fail` は既知の不具合を表す（直したら外す）。
 | class | クラス・メンバー・関係の追加・削除、関係の種類・多重度・ラベル、クラス名・表示名・注釈 |
 | state | 状態・次の状態・遷移の追加・削除、表示名・名前、遷移のラベル |
 | ER | エンティティ・属性・リレーションの追加・削除、多重度・線・ラベル、エンティティ名 |
+| architecture | サービス（追加・次のサービス（Tab）・ID・ラベル・アイコン・所属するグループ）、グループ（追加・中にサービス（Tab）・ID・題名・アイコン・外側のグループ・枠を外す・中身ごと削除）、junction（ID・グループ）、線（接続・削除・両端の辺 L / R / T / B・矢印の向き・ラベル）、図の題名。ID を変えると in・線・align の参照も変わり、要素を消すとつながる線も消える |
 | mindmap / kanban | 子・兄弟（列・カード）の追加、部分木ごとの削除・並べ替え、テキスト・形 |
-| pie / gantt / timeline / journey / gitGraph / quadrant / xychart / sankey / packet / radar / treemap / C4 / requirement / architecture / usecase | 表で行の追加・削除・並べ替え・値の変更、図全体の設定（タイトルなど） |
+| pie / gantt / timeline / journey / gitGraph / quadrant / xychart / sankey / packet / radar / treemap / C4 / requirement / usecase | 表で行の追加・削除・並べ替え・値の変更、図全体の設定（タイトルなど） |
 | block | ブロック（追加・次のブロック（Tab）・入れ子の中に追加・削除・ラベル・形 12 種類・幅）、入れ子のブロック（幅・中の列の数・中身ごと削除）、矢印（追加・削除）、図全体の列の数 |
 | 上記以外 | ラベルの直接編集のみ（汎用フォールバック） |
 

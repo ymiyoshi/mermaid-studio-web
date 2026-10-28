@@ -56,6 +56,9 @@ export const ja = {
   'misc.kind.blockItem': 'ブロック',
   'misc.kind.section': '区切り',
   'misc.kind.subgraph': 'サブグラフ',
+  'misc.kind.service': 'サービス',
+  'misc.kind.group': 'グループ',
+  'misc.kind.junction': 'junction',
   // 表の入力欄
   'misc.table.optional': '{label}（省略可）',
 } as const;
@@ -112,5 +115,8 @@ export const en: Record<keyof typeof ja, string> = {
   'misc.kind.blockItem': 'Block',
   'misc.kind.section': 'Section',
   'misc.kind.subgraph': 'Subgraph',
+  'misc.kind.service': 'Service',
+  'misc.kind.group': 'Group',
+  'misc.kind.junction': 'Junction',
   'misc.table.optional': '{label} (optional)',
 };

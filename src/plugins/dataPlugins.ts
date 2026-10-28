@@ -425,7 +425,7 @@ export const treemapPlugin = dataPlugin(
   ],
 );
 
-// ---- C4 / requirement / architecture / usecase ------------------------------
+// ---- C4 / requirement / usecase ------------------------------
 
 const C4_ELEMENTS = [
   'Person',
@@ -519,45 +519,6 @@ export const requirementPlugin = dataPlugin(
   ],
 );
 
-const ICONS = ['cloud', 'database', 'disk', 'internet', 'server'];
-
-export const architecturePlugin = dataPlugin(
-  'architecture',
-  [],
-  [
-    {
-      id: 'parts',
-      title: t('data.arch.table'),
-      schemas: [
-        rx(
-          'group',
-          t('data.arch.group'),
-          /^group\s+(?<id>[\p{L}\p{N}_]+)\((?<icon>[^)]*)\)\[(?<label>[^\]]*)\](?:\s+in\s+(?<parent>\S+))?\s*$/du,
-          [text('id', 'ID', { width: 0.6 }), select('icon', t('data.arch.icon'), ICONS), text('label', t('data.name')), text('parent', t('data.arch.parentGroup'), { optional: true })],
-          (v) => `group ${v.id}(${v.icon})[${v.label}]${v.parent ? ` in ${v.parent}` : ''}`,
-          { id: 'g1', icon: 'cloud', label: t('data.arch.group.new'), parent: '' },
-        ),
-        rx(
-          'service',
-          t('data.arch.service'),
-          /^service\s+(?<id>[\p{L}\p{N}_]+)\((?<icon>[^)]*)\)\[(?<label>[^\]]*)\](?:\s+in\s+(?<parent>\S+))?\s*$/du,
-          [text('id', 'ID', { width: 0.6 }), select('icon', t('data.arch.icon'), ICONS), text('label', t('data.name')), text('parent', t('data.arch.group'), { optional: true })],
-          (v) => `service ${v.id}(${v.icon})[${v.label}]${v.parent ? ` in ${v.parent}` : ''}`,
-          { id: 's1', icon: 'server', label: t('data.arch.service.new'), parent: '' },
-        ),
-        rx(
-          'edge',
-          t('data.arch.edge'),
-          /^(?<a>[\p{L}\p{N}_]+):(?<as>[LRTB])\s*(?<arrow><?-->?)\s*(?<bs>[LRTB]):(?<b>[\p{L}\p{N}_]+)\s*$/du,
-          [text('a', t('data.from'), { width: 0.6 }), select('as', t('data.arch.fromSide'), ['L', 'R', 'T', 'B'], { width: 0.5 }), select('arrow', t('data.arch.line'), ['--', '-->', '<--', '<-->'], { width: 0.6 }), select('bs', t('data.arch.toSide'), ['L', 'R', 'T', 'B'], { width: 0.5 }), text('b', t('data.to'), { width: 0.6 })],
-          (v) => `${v.a}:${v.as} ${v.arrow} ${v.bs}:${v.b}`,
-          { a: 's1', as: 'R', arrow: '--', bs: 'L', b: 's2' },
-        ),
-      ],
-    },
-  ],
-);
-
 export const usecasePlugin = dataPlugin(
   'usecase',
   [],
@@ -594,6 +555,5 @@ export const DATA_PLUGINS: { plugin: DiagramPlugin; aliases?: string[] }[] = [
   { plugin: treemapPlugin },
   { plugin: c4Plugin },
   { plugin: requirementPlugin },
-  { plugin: architecturePlugin },
   { plugin: usecasePlugin },
 ];
