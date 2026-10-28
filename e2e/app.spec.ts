@@ -20,7 +20,7 @@ test('テキストの変更が図に反映され、構文エラーの間は最�
   await expect(page.locator('.diagram-viewport')).toHaveClass(/stale/);
   await expect(node(page, '出力')).toBeVisible();
 
-  await page.keyboard.press('Control+Z');
+  await page.keyboard.press('ControlOrMeta+Z');
   await expect(page.locator('.error-banner')).toHaveCount(0);
   await expect(page.locator('.diagram-viewport')).not.toHaveClass(/stale/);
 });
@@ -58,9 +58,9 @@ test('undo・redo と、再読み込みしても残る履歴', async ({ page }) 
   await expect.poll(() => editorText(page)).toContain('A[変更後]');
 
   await page.locator('.diagram-viewport').click({ position: { x: 5, y: 5 } });
-  await page.keyboard.press('Control+Z');
+  await page.keyboard.press('ControlOrMeta+Z');
   await expect.poll(() => editorText(page)).toContain('A[開始]');
-  await page.keyboard.press('Control+Shift+Z');
+  await page.keyboard.press('ControlOrMeta+Shift+Z');
   await expect.poll(() => editorText(page)).toContain('A[変更後]');
 
   // 保存は少し遅れて行われるので、待ってから読み込み直す
@@ -68,7 +68,7 @@ test('undo・redo と、再読み込みしても残る履歴', async ({ page }) 
   await page.reload();
   await expect(node(page, '変更後')).toBeVisible();
   await page.locator('.diagram-viewport').click({ position: { x: 5, y: 5 } });
-  await page.keyboard.press('Control+Z');
+  await page.keyboard.press('ControlOrMeta+Z');
   await expect.poll(() => editorText(page)).toContain('A[開始]');
 });
 
@@ -124,8 +124,8 @@ test('履歴の版と今の版を図で比べる（変えた・足した要素�
 test('Ctrl を押しながら複数のノードを選び、形をまとめて変えてから、まとめて消す', async ({ page }) => {
   await openApp(page);
   await node(page, '開始').click();
-  await node(page, '処理を実行').click({ modifiers: ['Control'] });
-  await node(page, '終了').click({ modifiers: ['Control'] });
+  await node(page, '処理を実行').click({ modifiers: ['ControlOrMeta'] });
+  await node(page, '終了').click({ modifiers: ['ControlOrMeta'] });
   await expect(page.locator('.panel-heading')).toHaveText('3 個のノード');
   await expect(page.locator('.diagram-canvas .mmd-selected')).toHaveCount(3);
   await page.getByLabel('形', { exact: true }).click();
@@ -221,7 +221,7 @@ test('まとめて消すとき、番号で指すエッジは元の図の番号�
   await openApp(page);
   // はい（B→C）と、C→E のエッジを選ぶ
   await page.locator('.diagram-canvas g.edgeLabel', { hasText: 'はい' }).click();
-  await page.locator('.diagram-canvas path[data-id="L_C_E_0"] + .mmd-hit').click({ modifiers: ['Control'], force: true });
+  await page.locator('.diagram-canvas path[data-id="L_C_E_0"] + .mmd-hit').click({ modifiers: ['ControlOrMeta'], force: true });
   await expect(page.locator('.panel-heading')).toHaveText('2 個のエッジ');
   await page.locator('.diagram-viewport').focus();
   await page.keyboard.press('Delete');
@@ -236,7 +236,7 @@ test('まとめて編集: 名前は出さず、「（なし）」を選べる', 
   await setEditorText(page, 'flowchart LR\n  A:::hot --> B:::hot\n  classDef hot fill:#f96');
   await expect(node(page, 'B')).toBeVisible();
   await node(page, 'A').click();
-  await node(page, 'B').click({ modifiers: ['Control'] });
+  await node(page, 'B').click({ modifiers: ['ControlOrMeta'] });
   await expect(page.locator('.panel-heading')).toHaveText('2 個のノード');
   await expect(page.getByLabel('ID')).toHaveCount(0);
   await page.locator('.property-panel').getByLabel('クラス').selectOption({ label: '（なし）' });
@@ -244,7 +244,7 @@ test('まとめて編集: 名前は出さず、「（なし）」を選べる', 
 
   await newFromTemplate(page, '状態遷移図');
   await page.locator('.diagram-canvas g.node', { hasText: '待機' }).click();
-  await page.locator('.diagram-canvas g.node', { hasText: '実行中' }).click({ modifiers: ['Control'] });
+  await page.locator('.diagram-canvas g.node', { hasText: '実行中' }).click({ modifiers: ['ControlOrMeta'] });
   await expect(page.locator('.panel-heading')).toHaveText('2 個の状態');
   await expect(page.getByLabel('状態の名前（ID）')).toHaveCount(0);
 });
@@ -263,7 +263,7 @@ test('履歴のペインを閉じていても、コマンドパレットから�
   await openApp(page);
   await page.getByTitle('履歴を表示・隠す').click();
   await expect(page.locator('.history-pane')).toHaveCount(0);
-  await page.keyboard.press('Control+K');
+  await page.keyboard.press('ControlOrMeta+K');
   await page.getByRole('dialog', { name: 'コマンド' }).getByRole('combobox').fill('タイムラプス');
   await page.keyboard.press('Enter');
   await expect(page.getByRole('dialog', { name: '作った過程を再生' })).toBeVisible();
@@ -357,14 +357,14 @@ test('Ctrl+K のコマンドパレットで、テンプレートから図を作�
   await openApp(page);
   // エディタにフォーカスがあっても開く
   await page.locator('.cm-content').click();
-  await page.keyboard.press('Control+K');
+  await page.keyboard.press('ControlOrMeta+K');
   const palette = page.getByRole('dialog', { name: 'コマンド' });
   await palette.getByRole('combobox').fill('シーケンス');
   await page.keyboard.press('Enter');
   await expect(page.locator('.title-input')).toHaveValue('シーケンス図');
   await expect(palette).toHaveCount(0);
 
-  await page.keyboard.press('Control+K');
+  await page.keyboard.press('ControlOrMeta+K');
   await palette.getByRole('combobox').fill('開く フローチャート');
   await expect(palette.getByRole('option')).toHaveCount(1);
   await page.keyboard.press('Enter');
@@ -483,7 +483,7 @@ test('ファイルを渡されて起動したとき、見本の図を作らず�
 
 test('画像として書き出す（PNG のダウンロード）', async ({ page }) => {
   await openApp(page);
-  await page.keyboard.press('Control+Shift+E');
+  await page.keyboard.press('ControlOrMeta+Shift+E');
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'ダウンロード' }).click();
   const file = await download;
@@ -595,7 +595,7 @@ test('表のセルに続けて打っても、フォーカスが外れない', as
   await newFromTemplate(page, '円グラフ');
   const cell = page.locator('.table-row .row-cell input').first();
   await cell.click();
-  await cell.press('Control+A');
+  await cell.press('ControlOrMeta+A');
   await page.keyboard.type('Edge', { delay: 50 });
   await expect.poll(() => editorText(page)).toContain('"Edge" : 62');
 });
