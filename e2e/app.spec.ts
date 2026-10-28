@@ -458,6 +458,57 @@ test('ブロック図: 次のブロックを足してラベルを付け、ブロ
   await expect(blockNode('API')).toHaveCount(0);
 });
 
+test('アーキテクチャ図: 次のサービスを足してラベルを付け、サービスを消すと線も消える', async ({ page }) => {
+  await openApp(page);
+  await newFromTemplate(page, 'アーキテクチャ図');
+  const service = (text: string) => page.locator('.diagram-canvas g.architecture-service', { hasText: text });
+  await service('サーバー').click();
+  await expect(page.locator('.panel-heading')).toHaveText('サービス: server');
+  await page.keyboard.press('Tab');
+  await page.locator('.inline-label-editor input').fill('キャッシュ');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => editorText(page)).toContain('service svc1(server)[キャッシュ] in api');
+  await expect.poll(() => editorText(page)).toContain('server:R -- L:svc1');
+  await expect(service('キャッシュ')).toHaveCount(1);
+
+  await service('サーバー').click();
+  await page.keyboard.press('Delete');
+  await expect.poll(() => editorText(page)).not.toMatch(/service server|server:|:server/);
+  await expect(service('サーバー')).toHaveCount(0);
+  expect(await editorText(page)).not.toContain(' -- ');
+});
+
+test('アーキテクチャ図: 線のラベルとグループの題名で選び、グループの枠を外しても描ける', async ({ page }) => {
+  const errors = await openApp(page);
+  await setEditorText(
+    page,
+    `architecture-beta
+    group cloud(cloud)[クラウド]
+    group inner(server)[内側] in cloud
+    service web(internet)[ウェブ]
+    service api(server)[API サーバー] in cloud
+    service db(database)[データ] in inner
+    junction j1 in cloud
+    web:R --> L:api{group}
+    api:B -[読み書き]- T:j1
+    j1:R -- L:db
+`,
+  );
+  const canvas = page.locator('.diagram-canvas');
+  await expect(canvas.locator('g.architecture-service')).toHaveCount(3);
+  await canvas.getByText('読み書き').click();
+  await expect(page.locator('.panel-heading')).toHaveText(/^エッジ/);
+
+  await canvas.getByText('クラウド').click();
+  await expect(page.locator('.panel-heading')).toHaveText('グループ: cloud');
+  await page.keyboard.press('Delete');
+  await expect.poll(() => editorText(page)).not.toContain('group cloud');
+  await expect.poll(() => editorText(page)).toContain('group inner(server)[内側]\n');
+  await expect(canvas.locator('g.architecture-service')).toHaveCount(3);
+  await expect(canvas.locator('g.architecture-groups > rect')).toHaveCount(1);
+  expect(errors).toEqual([]);
+});
+
 test('メッセージの本文を打って Enter を押すと、補完ではなく改行になる', async ({ page }) => {
   await openApp(page);
   await setEditorText(page, 'sequenceDiagram\n  U->>S: リクエスト\n  S->>U: ');

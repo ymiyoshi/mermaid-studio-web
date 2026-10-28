@@ -40,6 +40,9 @@ const KIND_LABEL: Record<string, string> = {
   'block-item': t('misc.kind.blockItem'),
   section: t('misc.kind.section'),
   subgraph: t('misc.kind.subgraph'),
+  service: t('misc.kind.service'),
+  group: t('misc.kind.group'),
+  junction: t('misc.kind.junction'),
 };
 
 // 図ビューはパンやドラッグのたびに描き直されるので、props が変わらないときは描き直さない

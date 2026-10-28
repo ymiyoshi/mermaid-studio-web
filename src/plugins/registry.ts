@@ -7,6 +7,7 @@ import { erPlugin } from './erDiagram';
 import { mindmapPlugin } from './mindmap';
 import { kanbanPlugin } from './kanban';
 import { blockPlugin } from './block';
+import { architecturePlugin } from './architecture';
 import { DATA_PLUGINS } from './dataPlugins';
 import type { DiagramPlugin } from './types';
 
@@ -26,6 +27,7 @@ registerPlugin(erPlugin);
 registerPlugin(mindmapPlugin);
 registerPlugin(kanbanPlugin);
 registerPlugin(blockPlugin, 'block-beta');
+registerPlugin(architecturePlugin);
 for (const { plugin, aliases } of DATA_PLUGINS) registerPlugin(plugin, ...(aliases ?? []));
 
 export function pluginFor(diagramType: string | null): DiagramPlugin {

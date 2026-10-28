@@ -28,6 +28,7 @@ const TYPES: Record<string, string> = {
   quadrant: 'quadrantChart',
   usecase: 'usecase',
   architecture: 'architecture',
+  'architecture-full': 'architecture',
   c4: 'c4',
   sankey: 'sankey',
   requirement: 'requirement',

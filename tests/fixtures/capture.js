@@ -29,6 +29,20 @@ async () => {
     A->>A: self
   end
   B->>A: bye`,
+    'architecture-full': `architecture-beta
+    title 構成
+    group cloud(cloud)[クラウド]
+    group inner(server)[内側] in cloud
+    service web(internet)[ウェブ]
+    service api(server)[API サーバー] in cloud
+    service db(database)["データ ベース"] in inner
+    service bare in cloud
+    junction j1 in cloud
+    %% コメント
+    web:R --> L:api{group}
+    api:B -[読み書き]- T:j1
+    j1:R -- L:db
+    j1:B <--> T:bare`,
     'flowchart-full': `flowchart LR
   A[開始] --> B
   B -- はい --> C@{ shape: doc, label: "書類 {1}" }
