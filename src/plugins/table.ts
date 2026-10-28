@@ -1,6 +1,6 @@
 import type { ChangeSpec } from '@codemirror/state';
 import { bodyLines, indentOf, type SourceLine } from './source';
-import { removeLine, removeLines } from './lineOps';
+import { moveLines, removeLine, removeLines } from './lineOps';
 
 // 設計書 §7.3: データ系の図種（pie / gantt / sankey など）は、行を表として編集する。
 // 1 行 = 1 つの文。セルを変えると、その値の範囲だけを書き換える（行の他の部分や書式は変えない）。
@@ -21,6 +21,8 @@ export interface ParsedRow {
   /** 値の行内での範囲。無い値（省略された値）は含まない */
   ranges: Record<string, [number, number]>;
 }
+
+export type DragAxis = 'x' | 'y' | 'xy' | 'free' | false;
 
 export interface RowSchema {
   kind: string;
@@ -45,6 +47,15 @@ export interface RowSchema {
   owns?: string[] | '*';
   /** インデントが深い後ろの行が、この行に属する（treemap の入れ子） */
   nested?: boolean;
+  /**
+   * 図の上でドラッグしたときの動き（x・y・xy: その向きの並べ替え、free: 落とした位置の座標を place で書く、false: 動かさない）。
+   * 無ければ上下の並べ替え。appendOnly の行は動かさない。図の向きで変わるもの（gitGraph）は、ソースから求める
+   */
+  drag?: DragAxis | ((source: string) => DragAxis);
+  /** 図の上で後ろの行ほど上・左に描かれるか（gitGraph の BT）。ドラッグで落とす前後を逆にする */
+  reversed?(source: string): boolean;
+  /** drag が free の行を、SVG の座標で by だけ動かしたときの新しい値（quadrantChart の点の x・y）。動かせなければ null */
+  place?(row: TableRow, svg: SVGSVGElement, by: { x: number; y: number }): Record<string, string> | null;
   /** 図から消してよいか（Git グラフの branch・checkout や最初のコミットは、後ろの行が頼っている）。無ければ消してよい */
   canDelete?(row: TableRow, rows: TableRow[]): boolean;
   /** セルの値をソースに書くときの変換（引用符のエスケープなど） */
@@ -176,3 +187,29 @@ export function moveRow(rows: TableRow[], i: number, dir: -1 | 1): ChangeSpec[] 
 
 /** "..." で囲む値のエスケープ。mermaid は引用符の中の " を #quot; で書く */
 export const quoteSafe = (v: string) => v.replace(/"/g, '#quot;');
+
+/** 子の行（nested: インデントが深い後ろの行）を持てる行の、子の字下げ */
+function childIndentOf(rows: TableRow[], row: TableRow): string {
+  const next = rows[rows.indexOf(row) + 1];
+  const own = indentOf(row.line.text);
+  return next && indentOf(next.line.text).length > own.length ? indentOf(next.line.text) : `${own}  `;
+}
+
+/**
+ * row とそれに属する行（owns・nested）を、target の前（before）か後ろへ動かす（ドラッグでの移動）。
+ * 属する行を持つ行（section など）は、同じ種類の行の前後にだけ動かす。
+ * 後ろに落とすとき、target が row の種類の行を持つなら（section の後ろにタスク）、target のすぐ後ろ（最初の行）に入れ、
+ * そうでなければ target に属する行の後ろに入れる。入れ子（treemap）は、字下げを target に合わせる。at は動かした最初の行の変更後の位置
+ */
+export function moveRowTo(source: string, rows: TableRow[], row: TableRow, target: TableRow, before: boolean): { change: ChangeSpec[]; at: number } | null {
+  if (row.schema.appendOnly || (row.schema.owns && target.schema.kind !== row.schema.kind)) return null;
+  const takes = (x: TableRow) => (x.schema.owns === '*' ? x.schema.kind !== row.schema.kind : !!x.schema.owns?.includes(row.schema.kind));
+  const anchor = before ? target.line : takes(target) ? target.end : rowScope(rows, target).end;
+  return moveLines(source, row.line, rowScope(rows, row).end, anchor, before, row.schema.nested ? indentOf(target.line.text) : undefined);
+}
+
+/** row とその子を、入れ子の行（treemap）container の最後の子にする */
+export function moveRowInto(source: string, rows: TableRow[], row: TableRow, container: TableRow): { change: ChangeSpec[]; at: number } | null {
+  if (!row.schema.nested || !container.schema.nested) return null;
+  return moveLines(source, row.line, rowScope(rows, row).end, rowScope(rows, container).end, false, childIndentOf(rows, container));
+}

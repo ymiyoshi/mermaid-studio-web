@@ -9,7 +9,7 @@ import { ErrorBanner } from './ErrorBanner';
 import { ShapeActionButton } from './ShapeActionButton';
 import { getSetting, putSetting } from '../storage/db';
 import { DRAG_THRESHOLD_PX, fixSvgSize, rectIn, unionRect, usePanZoom, type Rect, type ViewBox } from './usePanZoom';
-import { contains, findDrop, markContainers, type DropCandidate, type DropSpot } from './reorderDrop';
+import { contains, markContainers, resolveDrop, type DragCandidate, type DropResult } from './reorderDrop';
 import { DIAGRAM_COMMAND_EVENT, type DiagramCommand } from './commands';
 import { composeEach } from '../plugins/source';
 import { t } from '../i18n';
@@ -26,17 +26,34 @@ function targetRect(x: DiagramTarget, vp: HTMLElement): Rect {
   return x.labelEl === x.el ? a : unionRect(a, rectIn(x.labelEl, vp));
 }
 
-/** 並べ替えのドラッグ中の状態（押した要素。動かし始めるまで candidates は null） */
+/** 中へ落とす先の範囲。当たり判定の要素（領域の背景など）も含める */
+function dropRect(x: DiagramTarget, vp: HTMLElement): Rect {
+  return (x.hits ?? []).reduce((r, h) => unionRect(r, rectIn(h, vp)), targetRect(x, vp));
+}
+
+/** ドラッグで動かしている間の状態（押した要素。動かし始めるまで candidates は null） */
 interface Reorder {
   target: DiagramTarget & { ref: ElementRef };
-  axis: 'x' | 'y';
+  axis: 'x' | 'y' | 'xy' | 'free';
   x: number;
   y: number;
   /** 落とし先の候補と、それを測ったときの表示（拡大縮小やパンをしたら測り直す） */
-  candidates: DropCandidate<DiagramTarget>[] | null;
+  candidates: DragCandidate<DiagramTarget>[] | null;
   measuredFor: ViewBox | null;
-  spot: DropSpot<DiagramTarget> | null;
+  spot: DropResult<DiagramTarget> | null;
+  /** 図の一番外（どの枠の外）へも落とせるか */
+  root?: boolean;
+  /** free のとき、最後のポインタの位置（画面の座標。押した位置 x・y からの差だけ動かす） */
+  at?: { x: number; y: number };
 }
+
+/** 落とし先の表示（線・枠・置く位置の影） */
+const spotView = (spot: DropResult<DiagramTarget> | null): { line: Rect | null; box: Rect | null } =>
+  !spot ? { line: null, box: null } : spot.kind === 'move' ? { line: spot.line, box: null } : { line: null, box: spot.box };
+
+const sameSpot = (a: DropResult<DiagramTarget> | null, b: DropResult<DiagramTarget> | null) =>
+  a === b ||
+  (!!a && !!b && a.kind === b.kind && a.item === b.item && (a.kind !== 'move' || b.kind !== 'move' || a.before === b.before));
 
 const TOOLBAR_H = 30;
 const TOOLBAR_W = 220;
@@ -94,8 +111,8 @@ export function DiagramPane() {
   /** 追加した要素。描画されたらラベル編集を始める */
   const pendingFocus = useRef<{ ref?: ElementRef; at?: number } | null>(null);
   const reorder = useRef<Reorder | null>(null);
-  /** ドラッグ中の表示（薄くする要素と、落とす位置の線） */
-  const [drag, setDrag] = useState<{ key: string; line: Rect | null } | null>(null);
+  /** ドラッグ中の表示（薄くする要素と、落とす位置の線・枠） */
+  const [drag, setDrag] = useState<{ key: string; line: Rect | null; box: Rect | null } | null>(null);
   const dragKey = drag?.key ?? null;
 
   const plugin = pluginFor(diagramType);
@@ -259,7 +276,7 @@ export function DiagramPane() {
     if (e.button !== 0 && e.button !== 1) return;
     if ((e.target as Element).closest('.inline-label-editor, .element-toolbar, .context-menu')) return;
     setMenu(null);
-    // 並べ替えられる要素の上で押したら、パンではなく並べ替えのドラッグにする
+    // 動かせる要素の上で押したら、パンではなく要素を動かすドラッグにする
     const source = useSession.getState().current?.text.toString();
     const hit = e.button === 0 && editable && !connect && plugin.reorder && source !== undefined ? targetAt(e.target) : null;
     const axis = hit?.ref ? plugin.reorder!.axis(source!, hit.ref) : null;
@@ -282,24 +299,46 @@ export function DiagramPane() {
     if (!vp) return;
     if (!r.candidates && Math.hypot(e.clientX - r.x, e.clientY - r.y) < DRAG_THRESHOLD_PX) return;
     // 候補の位置は、動かし始めたとき（と表示が変わったとき）だけ測る
+    const spec = plugin.reorder!;
+    if (r.axis === 'free') {
+      const own = targetRect(r.target, vp);
+      // 落とした位置に置く: 要素の影を、ポインタに合わせて動かして示す
+      r.candidates ??= [];
+      r.at = { x: e.clientX, y: e.clientY };
+      setDrag({ key: keyOf(r.target), line: null, box: { ...own, left: own.left + e.clientX - r.x, top: own.top + e.clientY - r.y } });
+      return;
+    }
     if (!r.candidates || r.measuredFor !== view) {
       const ref = r.target.ref;
-      // 動かしている要素の中（枠の中のメッセージなど）には落とせないので、候補から外す
+      const source = useSession.getState().current?.text.toString() ?? '';
+      // 動かしている要素の中（枠の中のメッセージ・サブグラフの中のノードなど）には落とせないので、候補から外す
+      // 落とせない要素は、位置を測る前に外す（測るのは落とせる要素だけ）
       const own = targetRect(r.target, vp);
       r.candidates = markContainers(
         targets
-          .filter((x) => x.ref && !sameRef(x.ref, ref) && plugin.reorder!.accepts(ref, x.ref))
-          .map((x) => ({ item: x, rect: targetRect(x, vp) }))
+          .filter((x) => x.ref && !sameRef(x.ref, ref))
+          .map((x) => ({ x, into: !!spec.acceptsInto?.(source, ref, x.ref!), sibling: !!spec.accepts?.(ref, x.ref!, source) }))
+          .filter((c) => c.sibling || c.into)
+          .map(({ x, into, sibling }) => ({ item: x, rect: into ? dropRect(x, vp) : targetRect(x, vp), sibling, into }))
           .filter((c) => !contains(own, c.rect)),
       );
+      r.root = !!spec.acceptsInto?.(source, ref, null);
       r.measuredFor = view;
+      // 落とし先が 1 つも無ければ（サブグラフの無いフローチャートのノードなど）、要素を動かさずに図をパンする
+      if (r.candidates.length === 0 && !r.root) {
+        reorder.current = null;
+        setDrag(null);
+        beginDrag(e, { x: r.x, y: r.y });
+        moveDrag(e);
+        return;
+      }
     }
     const box = vp.getBoundingClientRect();
-    const spot = findDrop(r.axis, { x: e.clientX - box.left, y: e.clientY - box.top }, r.candidates);
+    const spot = resolveDrop(r.axis, { x: e.clientX - box.left, y: e.clientY - box.top }, r.candidates, !!r.root);
     // 離したときは描き直しを待たずに最新の落とし先を使うので、ref に持つ。落とし先が変わったときだけ描き直す
-    const changed = !r.spot || !spot || r.spot.item !== spot.item || r.spot.before !== spot.before;
+    const changed = !sameSpot(r.spot, spot);
     r.spot = spot;
-    if (changed || !drag) setDrag({ key: keyOf(r.target), line: spot?.line ?? null });
+    if (changed || !drag) setDrag({ key: keyOf(r.target), ...spotView(spot) });
   };
 
   const endReorder = () => {
@@ -310,12 +349,28 @@ export function DiagramPane() {
   const onPointerUp = (e: React.PointerEvent) => {
     const r = reorder.current;
     if (r?.candidates) {
-      // 並べ替え: 落とし先の前後へ動かす
-      const spot = r.spot;
+      // 落とし先の前後・中へ動かす（free なら離した位置に置く）
+      const { spot, at } = r;
       endReorder();
       const source = useSession.getState().current?.text.toString();
-      // 動かせない・動かしても変わらない落とし先（すぐ隣など）では何もしない
-      const res = spot?.item.ref && source !== undefined && editable ? plugin.reorder!.move(source, r.target.ref, spot.item.ref, spot.before) : null;
+      if (source === undefined || !editable) return;
+      const spec = plugin.reorder!;
+      const ref = r.target.ref;
+      const svgEl = canvas.current?.querySelector('svg');
+      const ctm = svgEl?.getScreenCTM();
+      const toSvg = (x: number, y: number) => new DOMPoint(x, y).matrixTransform(ctm!.inverse());
+      const p = at && ctm ? { x: toSvg(at.x, at.y).x - toSvg(r.x, r.y).x, y: toSvg(at.x, at.y).y - toSvg(r.x, r.y).y } : null;
+      // 動かせない・動かしても変わらない落とし先（すぐ隣・もう中にある枠など）では何もしない
+      const res =
+        r.axis === 'free'
+          ? p && svgEl && spec.place
+            ? spec.place(source, ref, svgEl, p)
+            : null
+          : spot?.kind === 'move'
+            ? spot.item.ref && (spec.move?.(source, ref, spot.item.ref, spot.before) ?? null)
+            : spot?.kind === 'into' && (spot.item === null || spot.item.ref)
+              ? (spec.into?.(source, ref, spot.item?.ref ?? null) ?? null)
+              : null;
       if (res) void commit(res);
       return;
     }
@@ -456,6 +511,7 @@ export function DiagramPane() {
         />
         {status === 'empty' && <div className="diagram-empty">{t('diagram.empty')}</div>}
         {drag?.line && <div className="drop-indicator" style={drag.line} aria-hidden />}
+        {drag?.box && <div className="drop-box" style={drag.box} aria-hidden />}
         {canEdit && !session && !connect && !menu && multi.length === 0 && selected?.ref && toolbarRect && buttonActions.length > 0 && (
           <div
             className="element-toolbar"

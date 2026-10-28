@@ -2,7 +2,7 @@ import type { ChangeSpec } from '@codemirror/state';
 import type { DiagramPlugin, DiagramTarget, PropertyField, SourceRange } from './types';
 import { labelText, withGeneric } from './generic';
 import { indentOf, uniqueId } from './source';
-import { addChild, addSibling, deleteSubtree, movedIndex, moveSibling, parseOutline, type OutlineNode } from './outline';
+import { addChild, addSibling, deleteSubtree, movedIndex, moveSibling, outlineReorder, parseOutline, type OutlineNode } from './outline';
 import { t } from '../i18n';
 
 // mindmap のプラグイン（設計書 §7.3 Phase 3）。
@@ -197,6 +197,17 @@ export const mindmapPlugin: DiagramPlugin = {
       },
     },
   ],
+
+  // ドラッグ: トピックの前後（兄弟にする）か、トピックの真ん中（子にする）へ部分木ごと動かす。根は動かさず、根の兄弟も作らない
+  reorder: outlineReorder({
+    parse: (source) => parseOutline(source, isAttached),
+    find: (nodes, ref) => (ref.kind === 'topic' ? nodes[Number(ref.id)] : undefined),
+    axis: (n) => (n.parent ? 'y' : null),
+    // 根（0 番）の前後には落とせない（根は 1 つだけ）
+    accepts: (ref, target) => ref.kind === 'topic' && target.kind === 'topic' && target.id !== '0',
+    allowed: (_n, target, place) => place === 'into' || !!target.parent,
+    result: (_n, index) => ({ label: t('mm.history.drag'), select: { kind: 'topic', id: String(index) } }),
+  }),
 };
 
 /** 部分木の中で最後のノードの番号 */

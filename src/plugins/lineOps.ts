@@ -1,5 +1,5 @@
-import type { ChangeSpec } from '@codemirror/state';
-import { bodyLines, indentOf, insertLineAfter, isComment, splitLines, tokenRegex, type SourceLine } from './source';
+import { ChangeSet, type ChangeSpec } from '@codemirror/state';
+import { applySpec, bodyLines, indentOf, insertLineAfter, isBlank, isComment, splitLines, tokenRegex, type SourceLine } from './source';
 
 // 行単位の図種（class / state / ER など）で共通に使う書き換え。
 
@@ -11,6 +11,50 @@ export function removeLine(source: string, line: SourceLine): ChangeSpec {
 /** 複数行（from 行から to 行まで）を消す変更 */
 export function removeLines(source: string, first: SourceLine, last: SourceLine): ChangeSpec {
   return last.to < source.length ? { from: first.from, to: last.to + 1 } : { from: Math.max(0, first.from - 1), to: last.to };
+}
+
+/** 複数行の字下げを old から indent に付け替える（old で始まらない行・空行はそのまま） */
+export function reindent(text: string, old: string, indent: string): string {
+  return text
+    .split('\n')
+    .map((l) => (l.trim() !== '' && l.startsWith(old) ? indent + l.slice(old.length) : l))
+    .join('\n');
+}
+
+/**
+ * first から last までの行を、anchor の行の前（before）か後ろへ動かす（ドラッグでの移動）。
+ * indent を渡すと、動かす行の字下げを first の字下げから付け替える（空行はそのまま）。
+ * 動かす行の中なら null。ただし anchor が last で後ろへ（親の最後の子孫を親の中へ・親の後ろへ）なら、
+ * すぐ隣（間が空行・コメントだけ）と同じく、その場で字下げだけを変える（変わらなければ null）。
+ * at は、動かした最初の行の変更後の位置
+ */
+export function moveLines(
+  source: string,
+  first: SourceLine,
+  last: SourceLine,
+  anchor: SourceLine,
+  before: boolean,
+  indent?: string,
+): { change: ChangeSpec[]; at: number } | null {
+  const self = !before && anchor.index === last.index && indent !== undefined;
+  if (!self && anchor.index >= first.index && anchor.index <= last.index) return null;
+  const text = indent === undefined ? source.slice(first.from, last.to) : reindent(source.slice(first.from, last.to), indentOf(first.text), indent);
+  // 動かす先が今の場所と空行・コメントしか隔てていなければ、並びは変わらない。その場で置き換える
+  // （消す範囲と足す位置が重ならないように。コメントだけが動く変更を履歴に残さないように）
+  const lines = splitLines(source);
+  const filler = (a: number, b: number) => lines.slice(a, b).every((l) => isBlank(l.text) || isComment(l.text));
+  if (self || (before ? anchor.index > last.index && filler(last.index + 1, anchor.index) : anchor.index < first.index && filler(anchor.index + 1, first.index))) {
+    const change = [{ from: first.from, to: last.to, insert: text }];
+    return applySpec(source, change) === source ? null : { change, at: first.from };
+  }
+  let insert: { from: number; insert: string };
+  if (before) insert = { from: anchor.from, insert: `${text}\n` };
+  else if (anchor.to >= source.length) insert = { from: anchor.to, insert: `\n${text}` };
+  else insert = { from: anchor.to + 1, insert: `${text}\n` };
+  const change = [removeLines(source, first, last), insert];
+  if (applySpec(source, change) === source) return null;
+  const at = ChangeSet.of(change, source.length).mapPos(insert.from, -1) + (insert.insert.startsWith('\n') ? 1 : 0);
+  return { change, at };
 }
 
 /** 行番号の集まりの行をまとめて消す変更（隣り合う行は 1 つの範囲にまとめる。最後の行を消すときに、前の行の改行を消す変更と重ならないように） */

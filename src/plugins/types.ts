@@ -100,17 +100,29 @@ export interface DiagramPlugin {
   setProperty?(source: string, ref: ElementRef | null, fieldId: string, value: string): ChangeSpec | null;
   /** 行単位の表で編集できる部分（pie のスライス、gantt のタスクなど） */
   tables?: TableDef[];
-  /** ドラッグでの並べ替え（設計書 §6.3: 座標は保存せず、並び順の変更として扱う） */
+  /** ドラッグでの移動（設計書 §6.3: 座標は保存せず、並び順・所属の変更として扱う） */
   reorder?: ReorderSpec;
 }
 
 export interface ReorderSpec {
-  /** ドラッグで並べ替えられる要素なら、動かす向き（x: 左右、y: 上下）。動かせなければ null */
-  axis(source: string, ref: ElementRef): 'x' | 'y' | null;
-  /** ref を target の前後に落とせるか（ドラッグ中の落とし先の候補を絞る） */
-  accepts(ref: ElementRef, target: ElementRef): boolean;
+  /**
+   * ドラッグで動かせる要素なら、並びの向き（x: 左右、y: 上下、xy: 左上から右下へ読む順（格子など）、
+   * free: 落とした位置に置く（place））。動かせなければ null
+   */
+  axis(source: string, ref: ElementRef): 'x' | 'y' | 'xy' | 'free' | null;
+  /** ref を target の前後に落とせるか（ドラッグ中の落とし先の候補を絞る）。無ければ前後には落とせない */
+  accepts?(ref: ElementRef, target: ElementRef, source: string): boolean;
   /** ref を target の前（before）か後ろへ動かす変更 */
-  move(source: string, ref: ElementRef, target: ElementRef, before: boolean): ActionResult | null;
+  move?(source: string, ref: ElementRef, target: ElementRef, before: boolean): ActionResult | null;
+  /** ref を container の中へ落とせるか（サブグラフ・グループ・列・子にするノードなど）。container が null なら図の一番外（どの枠にも入れない） */
+  acceptsInto?(source: string, ref: ElementRef, container: ElementRef | null): boolean;
+  /** ref を container の中（null なら図の一番外）へ動かす変更。もう中にあって変わらなければ null */
+  into?(source: string, ref: ElementRef, container: ElementRef | null): ActionResult | null;
+  /**
+   * axis が free の要素を、SVG の座標で by だけ動かした位置に置く変更。
+   * 座標そのものが Mermaid の書き方である図種（quadrantChart の点・wardley の部品）だけが持つ（設計書 §6.3）
+   */
+  place?(source: string, ref: ElementRef, svg: SVGSVGElement, by: { x: number; y: number }): ActionResult | null;
 }
 
 /** 選択肢に今の値が無ければ足す（読めない値でも選択欄の表示が崩れないように） */

@@ -1,5 +1,5 @@
-import type { ChangeSpec } from '@codemirror/state';
-import type { DiagramPlugin, DiagramTarget, ElementRef, PropertyField, SourceRange } from './types';
+import { ChangeSet, type ChangeSpec } from '@codemirror/state';
+import type { ActionResult, DiagramPlugin, DiagramTarget, ElementRef, PropertyField, SourceRange } from './types';
 import { withGeneric } from './generic';
 import { applySpec, bodyLines, indentOf, insertLineAfter, uniqueId, type SourceLine } from './source';
 import { removeLineSet } from './lineOps';
@@ -318,6 +318,29 @@ function addedAt<T extends { line: SourceLine }>(source: string, change: { from:
   return pick(after).find((x) => x.line.from === at);
 }
 
+/**
+ * 項目（text）を、集合・重なり r の領域へ移す（ドラッグでの移動）。
+ * 元の行を消し、移す先の set / union の行に付く字下げした text として書き直す（add-text と同じ位置）
+ */
+function moveText(source: string, tr: ElementRef, r: ElementRef): ActionResult | null {
+  const p = parseVenn(source);
+  const x = findText(p, tr);
+  const s = findSubset(p, r);
+  if (!x || !s || x.key === s.key) return null;
+  const statement = `text ${source.slice(x.tid.range.from, x.line.to).trimEnd()}`;
+  // 消してから、消した後のソースで足す（足す位置が消す行と重ならないように）
+  const removal = ChangeSet.of(removeLineSet(source, new Set([x.line.index])), source.length);
+  const mid = applySpec(source, removal);
+  const q = parseVenn(mid);
+  const to = findSubset(q, r);
+  if (!to) return null;
+  const indent = to.texts.length ? indentOf(to.texts.at(-1)!.line.text) : `${indentOf(to.line.text)}    `;
+  const insert = insertLineAfter(mid, blockEnd(to), `${indent}${statement}`);
+  const change = removal.compose(ChangeSet.of(insert, mid.length));
+  const moved = addedAt(mid, insert, (z) => z.texts);
+  return { change, label: t('ven.history.moveText'), select: moved ? textRef(moved) : undefined };
+}
+
 export const vennPlugin: DiagramPlugin = {
   type: 'venn',
 
@@ -522,4 +545,11 @@ export const vennPlugin: DiagramPlugin = {
       },
     },
   ],
+
+  // ドラッグ: 項目を、集合・重なりの領域の中へ移す（領域の位置と大きさは mermaid が決めるので、領域の間の移動だけ）
+  reorder: {
+    axis: (source, r) => (findText(parseVenn(source), r) ? 'xy' : null),
+    acceptsInto: (_source, r, container) => r.kind === 'vtext' && (container?.kind === 'set' || container?.kind === 'union'),
+    into: (source, r, container) => (container ? moveText(source, r, container) : null),
+  },
 };

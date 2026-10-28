@@ -199,10 +199,10 @@ describe('図からの操作', () => {
     const src = 'railroad-peg-beta\nA <- "a";\nB <- "b";\nC <- "c";\n';
     const r = railroadPlugin.reorder!;
     expect(r.axis(src, rule('A'))).toBe('y');
-    expect(r.accepts(rule('A'), term('0:0'))).toBe(false);
-    const out = await apply(src, r.move(src, rule('C'), rule('A'), true)!.change);
+    expect(r.accepts!(rule('A'), term('0:0'), src)).toBe(false);
+    const out = await apply(src, r.move!(src, rule('C'), rule('A'), true)!.change);
     expect(out).toBe('railroad-peg-beta\nC <- "c";\nA <- "a";\nB <- "b";\n');
-    expect(r.move(src, rule('A'), rule('B'), true)).toBeNull();
+    expect(r.move!(src, rule('A'), rule('B'), true)).toBeNull();
   });
 
   it('規則を消す（規則だけの行は行ごと、同じ行に他の規則があればその部分だけ）', async () => {

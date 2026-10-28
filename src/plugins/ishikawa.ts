@@ -1,7 +1,7 @@
 import type { DiagramPlugin, DiagramTarget, PropertyField, SourceRange } from './types';
 import { withGeneric } from './generic';
 import { bodyLines, indentOf, type SourceLine } from './source';
-import { addChild, addSibling, deleteSubtree, movedIndex, moveSibling, type OutlineNode } from './outline';
+import { addChild, addSibling, deleteSubtree, movedIndex, moveSibling, outlineReorder, type OutlineNode } from './outline';
 import { t } from '../i18n';
 
 // ishikawa（特性要因図・フィッシュボーン）のプラグイン（設計書 §7.3）。
@@ -186,6 +186,17 @@ export const ishikawaPlugin: DiagramPlugin = {
       },
     },
   ],
+
+  // ドラッグ: 要因の前後（兄弟にする）か、要因・頭の真ん中（その下の要因にする）へ部分木ごと動かす。
+  // 骨は斜めにも左右にも並ぶので、並びは近い方の要因で決める
+  reorder: outlineReorder({
+    parse: parseIshikawa,
+    find: (nodes, r) => (KINDS.includes(r.kind) ? nodes[Number(r.id)] : undefined),
+    axis: (n) => (n.level > 0 ? 'xy' : null),
+    accepts: (r, target) => r.kind === 'cause' && target.kind === 'cause',
+    allowed: (_n, target, place) => place === 'into' || target.level > 0,
+    result: (_n, index) => ({ label: t('ik.history.move'), select: { kind: 'cause', id: String(index) } }),
+  }),
 };
 
 /** 部分木の最後の要素 */

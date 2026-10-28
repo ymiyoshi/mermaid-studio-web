@@ -828,6 +828,16 @@ select:focus-visible {
   pointer-events: none;
 }
 
+/* 中へ落とす枠・置く位置の影 */
+.drop-box {
+  position: absolute;
+  z-index: 8;
+  border: 2px dashed var(--select);
+  border-radius: 4px;
+  background: var(--select-soft);
+  pointer-events: none;
+}
+
 .connect-banner {
   padding: 6px 12px;
   background: var(--select-soft);

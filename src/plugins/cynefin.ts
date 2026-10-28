@@ -265,6 +265,20 @@ function swapItem(source: string, r: ElementRef, delta: -1 | 1) {
   };
 }
 
+/** 項目を別の項目の前（before）か後ろへ動かす（ドラッグでの移動。別の領域の項目の前後なら、その領域へ移す） */
+function moveItem(source: string, r: ElementRef, target: ElementRef, before: boolean) {
+  const p = parseCynefin(source);
+  const x = findItem(p, r);
+  const y = findItem(p, target);
+  if (!x || !y || x === y) return null;
+  const text = source.slice(x.token.from, x.token.to);
+  const insert = before ? { from: y.token.from, insert: `${text} ` } : { from: y.token.to, insert: ` ${text}` };
+  const change = [removeItem(source, x), insert];
+  if (applySpec(source, change) === source) return null;
+  const at = ChangeSet.of(change, source.length).mapPos(insert.from, -1) + (before ? 0 : 1);
+  return { change, label: t('cyn.history.move'), select: itemAfter(source, change, at) };
+}
+
 const TITLE: KeywordSpec = { id: 'title', label: t('cyn.field.title'), keyword: 'title' };
 
 export const cynefinPlugin: DiagramPlugin = {
@@ -473,5 +487,20 @@ export const cynefinPlugin: DiagramPlugin = {
       },
     },
   ],
+  // ドラッグ: 項目を別の項目の前後へ（別の領域の項目なら、その領域へ）、または領域の中（最後）へ動かす
+  reorder: {
+    axis: (source, r) => (findItem(parseCynefin(source), r) ? 'y' : null),
+    accepts: (r, target) => r.kind === 'item' && target.kind === 'item',
+    move: moveItem,
+    acceptsInto: (_source, r, container) => r.kind === 'item' && container?.kind === 'domain' && isDomain(container.id),
+    into(source, r, container) {
+      if (!container || !isDomain(container.id)) return null;
+      const change = cynefinPlugin.setProperty!(source, r, 'domain', container.id);
+      if (!change) return null;
+      // 動かした項目は、移した領域の最後の項目になる
+      const moved = parseCynefin(applySpec(source, change)).items.filter((x) => x.block.domain === container.id).at(-1);
+      return { change, label: t('cyn.history.moveTo', { domain: domainName(container.id) }), select: moved && itemRef(moved) };
+    },
+  },
 };
 
