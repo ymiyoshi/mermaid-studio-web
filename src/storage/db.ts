@@ -120,11 +120,30 @@ export async function deleteHistoryNodes(docId: string, ids: string[]): Promise<
 /**
  * 文書の現在のテキスト・headId と、新しく変わった履歴ノードを 1 つのトランザクションで書く（§8.5）。
  * 途中でクラッシュしても、テキストと履歴が食い違わない。
+ *
+ * existing を付けると、すでにある文書の保存として扱う。別のタブで完全に削除されていたら何も書かずに null を返し
+ * （履歴のルートが無いまま作り直さない）、ゴミ箱に入れられていたらゴミ箱のまま書く（保存で復活させない）。
+ * 書いた文書を返す。
  */
-export async function saveDocAndNodes(doc: DocRecord, nodes: HistoryNode[]): Promise<void> {
+export async function saveDocAndNodes(
+  doc: DocRecord,
+  nodes: HistoryNode[],
+  opts: { existing?: boolean } = {},
+): Promise<DocRecord | null> {
   const tx = (await db()).transaction(['documents', 'history'], 'readwrite');
+  const docs = tx.objectStore('documents');
+  let rec = doc;
+  if (opts.existing) {
+    const prev = await docs.get(doc.id);
+    if (!prev) {
+      await tx.done;
+      return null;
+    }
+    rec = { ...doc, deletedAt: prev.deletedAt };
+  }
   const hs = tx.objectStore('history');
-  await Promise.all([tx.objectStore('documents').put(doc), ...nodes.map((n) => hs.put(encodeNode(n))), tx.done]);
+  await Promise.all([docs.put(rec), ...nodes.map((n) => hs.put(encodeNode(n))), tx.done]);
+  return rec;
 }
 
 export async function updateDocMeta(id: string, patch: Partial<Omit<DocRecord, 'id'>>): Promise<DocRecord | undefined> {

@@ -1,4 +1,4 @@
-import type { ChangeSpec } from '@codemirror/state';
+import { ChangeSet, type ChangeSpec } from '@codemirror/state';
 import {
   nodeDefinition,
   nodeRefs,
@@ -56,6 +56,14 @@ function partText(source: string, doc: FlowDoc, st: Statement, part: Part, origi
 function replaceStatement(source: string, st: Statement, texts: string[]): ChangeSpec {
   const wholeLine = statementText(st.line.text) === source.slice(st.from, st.to).trim();
   if (texts.length === 0 && wholeLine) return removeLine(source, st.line);
+  if (texts.length === 0) {
+    // ; で区切った文の 1 つを消すときは、区切りも一緒に消す（残すと「; C --> D」や「;;」になる）。
+    // 後ろに区切りがあれば後ろの区切りまで、最後の文なら前の区切りから
+    const after = /^\s*;[ \t]*/.exec(source.slice(st.to, st.line.to));
+    if (after) return { from: st.from, to: st.to + after[0].length };
+    const before = /;\s*$/.exec(source.slice(st.line.from, st.from));
+    if (before) return { from: st.line.from + before.index, to: st.to };
+  }
   const sep = wholeLine ? '\n' + indentOf(st.line.text) : '; ';
   return { from: st.from, to: st.to, insert: texts.join(sep) };
 }
@@ -323,20 +331,38 @@ export function edgeInfo(source: string, index: number) {
 /**
  * エッジを足す・消す変更に、linkStyle の番号の付け直しを加える。
  * linkStyle はエッジを出てくる順の番号で指すので、途中に足したり消したりすると別のエッジを指してしまう
- * （範囲外の番号は構文エラーになる）。変更の前後のエッジを端点で出てくる順に突き合わせて番号を直す
+ * （範囲外の番号は構文エラーになる）。変更の前後のエッジを突き合わせて番号を直す。
+ * 変更が触れていないエッジは矢印の位置で突き合わせる（同じ端点のエッジが並んでいても取り違えない）。
+ * 書き換えた文の中のエッジは、端点で出てくる順に突き合わせる
  */
 export function withLinkStyles(source: string, change: ChangeSpec): ChangeSpec {
   const doc = parseFlowchart(source);
   if (doc.linkStyles.length === 0) return change;
-  const after = applySpec(source, change);
-  const next = parseFlowchart(after).edges;
+  const changes = ChangeSet.of(change, source.length);
+  const next = parseFlowchart(applySpec(source, change)).edges;
+  const arrowOf = (e: FlowEdge) => e.statement.links[e.link];
+  // A & B --> C は 1 つの矢印に複数のエッジがあるので、端点も合わせて引く
+  const key = (at: number, e: FlowEdge) => `${at} ${e.from} ${e.to}`;
+  const byArrow = new Map(next.map((e) => [key(arrowOf(e).arrowFrom, e), e.index]));
   const map = new Map<number, number>();
-  let j = 0;
+  const used = new Set<number>();
+  const touched: FlowEdge[] = [];
   for (const e of doc.edges) {
+    const l = arrowOf(e);
+    const k = changes.touchesRange(l.arrowFrom, l.arrowTo) ? undefined : byArrow.get(key(changes.mapPos(l.arrowFrom, 1), e));
+    if (k === undefined) touched.push(e);
+    else {
+      map.set(e.index, k);
+      used.add(k);
+    }
+  }
+  let j = 0;
+  for (const e of touched) {
     let k = j;
-    while (k < next.length && !(next[k].from === e.from && next[k].to === e.to)) k++;
+    while (k < next.length && (used.has(k) || !(next[k].from === e.from && next[k].to === e.to))) k++;
     if (k < next.length) {
       map.set(e.index, k);
+      used.add(k);
       j = k + 1;
     }
   }

@@ -355,8 +355,10 @@ function innerIndent(seq: Seq, outer: string): string {
 
 function newDeclaration(seq: Seq, source: string, text: string) {
   const last = seq.decls.at(-1);
-  const after = last?.line ?? seq.header;
-  const indent = (last && indentOf(last.line.text)) || lineIndent(seq);
+  // 最後の宣言が box の中なら、box の後ろに足す（中に足すと、その box に入ってしまう）
+  const box = last ? boxOf(seq, last.line) : null;
+  const after = box?.end ?? last?.line ?? seq.header;
+  const indent = (box ? indentOf(box.line.text) : last && indentOf(last.line.text)) || lineIndent(seq);
   return insertLineAfter(source, after, indent + text);
 }
 
@@ -618,7 +620,7 @@ export const sequencePlugin: DiagramPlugin = {
       const b = findBlock(seq, ref.id);
       if (!b) return [];
       return [
-        { id: 'kind', label: t('seq.field.type'), type: 'select', value: b.keyword.value, options: withValue(BLOCK_KINDS, b.keyword.value) },
+        { id: 'kind', label: t('seq.field.type'), type: 'select', value: b.keyword.value, options: withValue(b.sections.length ? BLOCK_KINDS.filter((k) => SECTION_KEYWORD[k.value]) : BLOCK_KINDS, b.keyword.value) },
         { id: 'cond', label: t('seq.field.cond'), type: 'text', value: source.slice(b.cond.from, b.cond.to) },
       ];
     }
@@ -680,7 +682,20 @@ export const sequencePlugin: DiagramPlugin = {
     if (ref.kind === 'block') {
       const b = findBlock(seq, ref.id);
       if (!b) return null;
-      if (field === 'kind') return { from: b.keyword.from, to: b.keyword.to, insert: value };
+      if (field === 'kind') {
+        const change = { from: b.keyword.from, to: b.keyword.to, insert: value };
+        if (b.sections.length === 0) return change;
+        // 区切り（else / and / option）のある枠は、区切りを持つ種類にだけ変え、区切りのキーワードも合わせる
+        const kw = SECTION_KEYWORD[value];
+        if (!kw) return null;
+        return [
+          change,
+          ...b.sections.map((x) => {
+            const at = x.line.from + indentOf(x.line.text).length;
+            return { from: at, to: at + x.keyword.length, insert: kw };
+          }),
+        ];
+      }
       if (field === 'cond') {
         // 条件が空の行に足すときは、キーワードとの間に空白を入れる
         if (b.cond.from === b.cond.to && value) return { from: b.keyword.to, to: b.line.to, insert: ` ${value}` };

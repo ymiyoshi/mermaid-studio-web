@@ -72,6 +72,13 @@ describe('sequence: 文の読み取り', () => {
 });
 
 describe('sequence: 参加者', () => {
+  it('最後の宣言が box の中なら、新しい参加者は box の後ろに足す（box に入れない）', async () => {
+    const src = 'sequenceDiagram\n  box 社内\n    participant A\n  end\n  A->>B: ping\n';
+    const r = run('add-participant', src, 'diagram', '')!;
+    expect(r.after).toBe('sequenceDiagram\n  box 社内\n    participant A\n  end\n  participant P1 as 新しい参加者\n  A->>B: ping\n');
+    await expect(mermaid.parse(r.after)).resolves.toBeTruthy();
+  });
+
   it('ID を変えると、宣言・メッセージ・注釈・activate だけが変わる（loop の条件や表示名は変えない）', async () => {
     const after = set(SRC, 'participant', 'A', 'id', 'C')!;
     expect(after).toContain('participant C as 窓口 A');
@@ -208,6 +215,15 @@ describe('sequence: 枠', () => {
     expect(set(SRC, 'block', '1', 'cond', '毎秒')).toContain('    loop 毎秒\n');
     expect(set(SRC, 'section', '2:0', 'cond', 'だめ')).toContain('    else だめ\n');
     await expect(mermaid.parse(opt)).resolves.toBeTruthy();
+  });
+
+  it('区切りのある枠は、区切りを持つ種類にだけ変え、区切りのキーワードも合わせる', async () => {
+    expect(set(SRC, 'block', '2', 'kind', 'loop')).toBeNull();
+    const par = set(SRC, 'block', '2', 'kind', 'par')!;
+    expect(par).toContain('    par 成功\n        B->>A: OK\n    and 失敗\n');
+    await expect(mermaid.parse(par)).resolves.toBeTruthy();
+    expect(field(SRC, 'block', '2', 'kind').options!.map((o) => o.value)).not.toContain('loop');
+    expect(field(SRC, 'block', '1', 'kind').options!.map((o) => o.value)).toContain('alt');
   });
 
   it('条件の無い枠に条件を足すときは空白を入れる', () => {

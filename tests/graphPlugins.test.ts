@@ -130,6 +130,11 @@ describe('stateDiagram', () => {
     expect(out).toContain('Wait --> Run : start');
     await valid(out);
   });
+
+  it('既にある状態の名前には変えない（2 つの状態が 1 つにまとまってしまう）', () => {
+    expect(statePlugin.setProperty!(STATE, { kind: 'state', id: 'Idle' }, 'name', 'Run')).toBeNull();
+    expect(statePlugin.setProperty!(STATE, { kind: 'state', id: 'Fast' }, 'name', 'Idle')).toBeNull();
+  });
 });
 
 const ER = `erDiagram
