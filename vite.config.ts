@@ -5,6 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 // 本番ビルドだけ CSP を埋め込む（開発サーバーは HMR のインラインスクリプトを使うため）。
 // connect-src 'self' で図の内容が外部に送られないことを保証する（設計書 §11）。
+// フォームの送信は通信ではなく画面の移動なので connect-src では止まらない。form-action 'none' で止める。
 const CSP = [
   "default-src 'self'",
   "script-src 'self'",
@@ -13,6 +14,7 @@ const CSP = [
   "font-src 'self' data:",
   "connect-src 'self'",
   "object-src 'none'",
+  "form-action 'none'",
   "base-uri 'self'",
 ].join('; ');
 
