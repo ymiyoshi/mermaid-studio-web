@@ -604,13 +604,23 @@ export const quadrantPlugin = dataPlugin(
     },
   ],
   // 点（g.data-point の丸とラベル）は、ラベルの文字（名前）で行に対応付ける（描く順はソースの逆のことがある）。
-  // 丸も行の要素にして、丸をつかんでドラッグできるようにする
-  (svg, rows) =>
-    [...svg.querySelectorAll('g.data-point')].flatMap((g) => {
-      const name = g.querySelector('text')?.textContent?.trim();
-      const row = rows.find((r) => r.schema.kind === 'point' && r.values.name === name);
+  // 丸も行の要素にして、丸をつかんでドラッグできるようにする。
+  // 同じ名前の点が複数あるときは、名前だけでは決まらないので、点と行をそれぞれ x の順（同じなら y の順）に並べて組にする
+  // （丸の cx は x に、cy は y の逆に沿う）
+  (svg, rows) => {
+    const byX = (a: [number, number], b: [number, number]) => a[0] - b[0] || a[1] - b[1];
+    const points = [...svg.querySelectorAll('g.data-point')].map((g) => {
+      const c = g.querySelector('circle');
+      return { g, name: g.querySelector('text')?.textContent?.trim(), at: [Number(c?.getAttribute('cx')), -Number(c?.getAttribute('cy'))] as [number, number] };
+    });
+    return points.flatMap(({ g, name }) => {
+      const same = rows.filter((r) => r.schema.kind === 'point' && r.values.name === name);
+      if (same.length <= 1) return same.map((row) => ({ el: g, row }));
+      const order = points.filter((p) => p.name === name).sort((a, b) => byX(a.at, b.at));
+      const row = same.sort((a, b) => byX([Number(a.values.x), Number(a.values.y)], [Number(b.values.x), Number(b.values.y)]))[order.findIndex((p) => p.g === g)];
       return row ? [{ el: g, row }] : [];
-    }),
+    });
+  },
 );
 
 export const xyPlugin = dataPlugin(

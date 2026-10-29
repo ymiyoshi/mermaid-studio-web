@@ -71,6 +71,8 @@ export interface DragCandidate<T> {
   into: boolean;
   /** 他の候補を含む要素か（markContainers で求める） */
   container?: boolean;
+  /** 点が要素の形の中にあるか（venn の円など、外接矩形では広すぎる要素）。無ければ rect で判定する */
+  hit?: (p: { x: number; y: number }) => boolean;
 }
 
 export type DropResult<T> =
@@ -82,11 +84,13 @@ const inside = (r: Rect, p: { x: number; y: number }) => p.x >= r.left && p.x <=
 const area = (r: Rect) => r.width * r.height;
 
 /** 点を含む候補のうち、一番内側の枠 */
-function innermost<T>(list: DragCandidate<T>[], at: (r: Rect) => boolean): DragCandidate<T> | null {
+function innermost<T>(list: DragCandidate<T>[], at: (c: DragCandidate<T>) => boolean): DragCandidate<T> | null {
   let best: DragCandidate<T> | null = null;
-  for (const c of list) if (at(c.rect) && (!best || area(c.rect) < area(best.rect))) best = c;
+  for (const c of list) if (at(c) && (!best || area(c.rect) < area(best.rect))) best = c;
   return best;
 }
+
+const pointsAt = <T>(c: DragCandidate<T>, p: { x: number; y: number }) => inside(c.rect, p) && (!c.hit || c.hit(p));
 
 /** 左右と上下を合わせた並び（ブロック図の格子など）: 一番近い要素の、中心より左なら前・右なら後ろ */
 function findDropXY<T>(pointer: { x: number; y: number }, candidates: DropCandidate<T>[]): DropSpot<T> | null {
@@ -129,13 +133,13 @@ export function resolveDrop<T>(
     ((axis === 'y' || mid(c.rect.left, c.rect.width, pointer.x)) && (axis === 'x' || mid(c.rect.top, c.rect.height, pointer.y)));
   const leaf = innermost(
     intos.filter((c) => !c.container),
-    (r) => inside(r, pointer),
+    (c) => pointsAt(c, pointer),
   );
   if (leaf && central(leaf)) return { kind: 'into', item: leaf.item, box: leaf.rect };
   // 2. 同じ枠の中にある要素の前後
-  const frame = innermost(frames, (r) => inside(r, pointer));
+  const frame = innermost(frames, (c) => pointsAt(c, pointer));
   const siblings = candidates.filter(
-    (c) => c.sibling && (frames.length === 0 || innermost(frames, (r) => contains(r, c.rect)) === frame),
+    (c) => c.sibling && (frames.length === 0 || innermost(frames, (f) => contains(f.rect, c.rect)) === frame),
   );
   const spot = axis === 'xy' ? findDropXY(pointer, siblings) : findDrop(axis, pointer, siblings);
   if (spot) return { kind: 'move', ...spot };

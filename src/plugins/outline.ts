@@ -185,7 +185,13 @@ export function outlineReorder<N extends OutlineNode>(o: {
       const n = nodes && o.find(nodes, ref);
       return n ? o.axis(n) : null;
     },
-    accepts: o.accepts,
+    // 自分の子孫の前後へは動かせない（子孫は親の枠の中に描かれないので、図の上の位置では外れない）
+    accepts(ref, target, source) {
+      const nodes = parse(source);
+      const n = nodes && o.find(nodes, ref);
+      const to = nodes && o.find(nodes, target);
+      return o.accepts(ref, target) && !!n && !!to && !inSubtree(to, n);
+    },
     move: (source, ref, target, before) => run(source, ref, target, before ? 'before' : 'after'),
     acceptsInto(source, ref, container) {
       const nodes = container && parse(source);

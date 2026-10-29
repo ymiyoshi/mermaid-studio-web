@@ -417,4 +417,38 @@ describe('ドラッグの落とし先と変更の細かい決まり', () => {
     expect(architecturePlugin.reorder!.acceptsInto!(AR, ref('service', 'app'), null)).toBe(false);
     expect(architecturePlugin.reorder!.acceptsInto!(AR, ref('service', 'db'), null)).toBe(true);
   });
+
+  it('形で当たりを決める領域（venn の円）は、外接矩形にかかっていても、形の外なら選ばない', () => {
+    // A（中心 100,100・半径 100 の円）・B（中心 250,100・半径 100）と、その重なり
+    const circle = (cx: number, cy: number) => (p: { x: number; y: number }) => Math.hypot(p.x - cx, p.y - cy) <= 100;
+    const venn = markContainers([
+      { ...c('A', r(0, 0, 200, 200), false, true), hit: circle(100, 100) },
+      { ...c('B', r(150, 0, 200, 200), false, true), hit: circle(250, 100) },
+      { ...c('AB', r(150, 15, 50, 170), false, true), hit: (p) => circle(100, 100)(p) && circle(250, 100)(p) },
+    ]);
+    // B と重なりの外接矩形の中でも、A の円にしか入っていなければ A
+    expect(resolveDrop('xy', { x: 160, y: 30 }, venn, false)).toMatchObject({ kind: 'into', item: 'A' });
+    expect(resolveDrop('xy', { x: 175, y: 100 }, venn, false)).toMatchObject({ kind: 'into', item: 'AB' });
+    expect(resolveDrop('xy', { x: 300, y: 100 }, venn, false)).toMatchObject({ kind: 'into', item: 'B' });
+  });
+
+  it('インデントの木: 自分の子孫の前後は、落とし先の候補にしない（動かせないので線を出さない）', () => {
+    const MM = 'mindmap\n  root((Studio))\n    表示\n      ::icon(fa fa-eye)\n      全図種\n    編集\n      テキスト\n';
+    expect(mindmapPlugin.reorder!.accepts!(ref('topic', '1'), ref('topic', '2'), MM)).toBe(false);
+    expect(move(mindmapPlugin, MM, ref('topic', '1'), ref('topic', '2'), true)).toBeNull();
+    expect(mindmapPlugin.reorder!.accepts!(ref('topic', '1'), ref('topic', '4'), MM)).toBe(true);
+    expect(mindmapPlugin.reorder!.accepts!(ref('topic', '2'), ref('topic', '1'), MM)).toBe(true);
+  });
+
+  it('quadrantChart: 同じ名前の点は、位置の順で行に対応付ける（ドラッグした点の行を書き換える）', () => {
+    const SRC = 'quadrantChart\n    A: [0.1, 0.1]\n    A: [0.9, 0.9]\n';
+    // 描く順はソースの逆のことがある
+    const point = (cx: number, cy: number) => `<g class="data-point"><circle cx="${cx}" cy="${cy}" r="5"></circle><text>A</text></g>`;
+    document.body.innerHTML = `<div><svg><g class="data-points">${point(180, 20)}${point(20, 180)}</g></svg></div>`;
+    const svg = document.querySelector('svg')!;
+    const targets = pluginFor('quadrantChart').mapTargets(svg, SRC);
+    const at = (cx: string) => targets.find((x) => x.el.querySelector('circle')?.getAttribute('cx') === cx)?.ref;
+    expect(at('20')).toEqual(row(2));
+    expect(at('180')).toEqual(row(3));
+  });
 });

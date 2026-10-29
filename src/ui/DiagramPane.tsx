@@ -31,6 +31,21 @@ function dropRect(x: DiagramTarget, vp: HTMLElement): Rect {
   return (x.hits ?? []).reduce((r, h) => unionRect(r, rectIn(h, vp)), targetRect(x, vp));
 }
 
+/** 図ビューの座標の点が、要素の形（path・circle など）の中にあるか。形が見つからなければ undefined（範囲で判定する） */
+function shapeHit(x: DiagramTarget, vp: HTMLElement): ((p: { x: number; y: number }) => boolean) | undefined {
+  const box = vp.getBoundingClientRect();
+  const shapes = [x.el, ...(x.hits ?? [])].flatMap((e) =>
+    e instanceof SVGGeometryElement ? [e] : [...e.querySelectorAll<SVGGeometryElement>('path, circle, ellipse, rect, polygon')],
+  );
+  // 画面の座標から、それぞれの形の座標への変換は、測ったときに求めておく
+  const tests = shapes.flatMap((s) => {
+    const m = s.getScreenCTM();
+    return m ? [{ s, inv: m.inverse() }] : [];
+  });
+  if (tests.length === 0) return undefined;
+  return (p) => tests.some(({ s, inv }) => s.isPointInFill(new DOMPoint(p.x + box.left, p.y + box.top).matrixTransform(inv)));
+}
+
 /** ドラッグで動かしている間の状態（押した要素。動かし始めるまで candidates は null） */
 interface Reorder {
   target: DiagramTarget & { ref: ElementRef };
@@ -43,13 +58,19 @@ interface Reorder {
   spot: DropResult<DiagramTarget> | null;
   /** 図の一番外（どの枠の外）へも落とせるか */
   root?: boolean;
+  /** 中へ落としても変わらない候補（今いる枠など）。指しても枠を出さない */
+  stay?: Set<DiagramTarget>;
   /** free のとき、最後のポインタの位置（画面の座標。押した位置 x・y からの差だけ動かす） */
   at?: { x: number; y: number };
 }
 
 /** 落とし先の表示（線・枠・置く位置の影） */
-const spotView = (spot: DropResult<DiagramTarget> | null): { line: Rect | null; box: Rect | null } =>
-  !spot ? { line: null, box: null } : spot.kind === 'move' ? { line: spot.line, box: null } : { line: null, box: spot.box };
+const spotView = (spot: DropResult<DiagramTarget> | null, stay?: Set<DiagramTarget>): { line: Rect | null; box: Rect | null } =>
+  !spot || (spot.kind === 'into' && spot.item && stay?.has(spot.item))
+    ? { line: null, box: null }
+    : spot.kind === 'move'
+      ? { line: spot.line, box: null }
+      : { line: null, box: spot.box };
 
 const sameSpot = (a: DropResult<DiagramTarget> | null, b: DropResult<DiagramTarget> | null) =>
   a === b ||
@@ -319,9 +340,16 @@ export function DiagramPane() {
           .filter((x) => x.ref && !sameRef(x.ref, ref))
           .map((x) => ({ x, into: !!spec.acceptsInto?.(source, ref, x.ref!), sibling: !!spec.accepts?.(ref, x.ref!, source) }))
           .filter((c) => c.sibling || c.into)
-          .map(({ x, into, sibling }) => ({ item: x, rect: into ? dropRect(x, vp) : targetRect(x, vp), sibling, into }))
+          .map(({ x, into, sibling }) => ({
+            item: x,
+            rect: into ? dropRect(x, vp) : targetRect(x, vp),
+            sibling,
+            into,
+            hit: into && spec.shaped ? shapeHit(x, vp) : undefined,
+          }))
           .filter((c) => !contains(own, c.rect)),
       );
+      r.stay = new Set(r.candidates.filter((c) => c.into && !spec.into?.(source, ref, c.item.ref!)).map((c) => c.item));
       r.root = !!spec.acceptsInto?.(source, ref, null);
       r.measuredFor = view;
       // 落とし先が 1 つも無ければ（サブグラフの無いフローチャートのノードなど）、要素を動かさずに図をパンする
@@ -338,7 +366,7 @@ export function DiagramPane() {
     // 離したときは描き直しを待たずに最新の落とし先を使うので、ref に持つ。落とし先が変わったときだけ描き直す
     const changed = !sameSpot(r.spot, spot);
     r.spot = spot;
-    if (changed || !drag) setDrag({ key: keyOf(r.target), ...spotView(spot) });
+    if (changed || !drag) setDrag({ key: keyOf(r.target), ...spotView(spot, r.stay) });
   };
 
   const endReorder = () => {
