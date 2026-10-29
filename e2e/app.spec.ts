@@ -482,6 +482,46 @@ test('ドラッグで動かす: カンバンのカードを空の列へ・ノー
   expect(Math.abs(Number(y) - 0.8)).toBeLessThan(0.03);
 });
 
+test('ドラッグで動かす: venn の項目は、外接矩形ではなく円の形で落とし先を決める', async ({ page }) => {
+  await openApp(page);
+  await setEditorText(page, 'venn-beta\n  set A\n    text t1["一"]\n  set B\n  union A,B\n');
+  await expect(page.locator('.diagram-viewport')).toHaveClass(/editable/);
+  const item = page.locator('.diagram-canvas .venn-text-node', { hasText: '一' });
+  await expect.poll(() => item.evaluate((el) => !!el.closest('.mmd-target'))).toBe(true);
+  // B の円の中で、A の円と重なりの外にあり、A と重なりの外接矩形にはかかる点（矩形で決めると B 以外になる）と、
+  // A の円の中で B の円の外にある点（項目はもう A にあるので、動かしても変わらない）
+  const spots = await page.evaluate(() => {
+    const circle = (key: string) => {
+      const r = document.querySelector(`.diagram-canvas g.venn-area[data-venn-sets="${key}"] path`)!.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2, r: r.width / 2, box: r };
+    };
+    const a = circle('A');
+    const b = circle('B');
+    const lens = document.querySelector('.diagram-canvas g.venn-area[data-venn-sets="A_B"] path')!.getBoundingClientRect();
+    const inBox = (r: DOMRect, x: number, y: number) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+    let toB: { x: number; y: number } | null = null;
+    for (let x = a.box.left; x <= a.box.right && !toB; x += 2)
+      for (let y = a.box.top; y <= a.box.bottom && !toB; y += 2)
+        if (Math.hypot(x - a.x, y - a.y) > a.r + 4 && Math.hypot(x - b.x, y - b.y) < b.r - 4 && inBox(lens, x, y)) toB = { x, y };
+    const inA = { x: a.x - a.r / 2, y: a.y - a.r / 2 };
+    return Math.hypot(inA.x - b.x, inA.y - b.y) > b.r + 4 && toB ? { toB, inA } : null;
+  });
+  expect(spots).not.toBeNull();
+  const { toB: spot, inA } = spots!;
+  const from = (await item.boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  // いる領域を指しても、動かしても変わらないので枠を出さない
+  await page.mouse.move(inA.x, inA.y, { steps: 8 });
+  // 出ないことを確かめるので、描き直しを待ってから見る
+  await page.waitForTimeout(200);
+  await expect(page.locator('.drop-box')).toHaveCount(0);
+  await page.mouse.move(spot.x, spot.y, { steps: 8 });
+  await expect(page.locator('.drop-box')).toBeVisible();
+  await page.mouse.up();
+  await expect.poll(() => editorText(page)).toMatch(/set B\n\s+text t1\["一"\]\n\s*union A,B/);
+});
+
 test('エディタで打つと、図の中の名前を補完できる', async ({ page }) => {
   await openApp(page);
   await setEditorText(page, 'flowchart LR\n  Kensaku[検索] --> B\n  ');

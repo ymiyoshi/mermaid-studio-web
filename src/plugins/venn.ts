@@ -551,5 +551,6 @@ export const vennPlugin: DiagramPlugin = {
     axis: (source, r) => (findText(parseVenn(source), r) ? 'xy' : null),
     acceptsInto: (_source, r, container) => r.kind === 'vtext' && (container?.kind === 'set' || container?.kind === 'union'),
     into: (source, r, container) => (container ? moveText(source, r, container) : null),
+    shaped: true,
   },
 };

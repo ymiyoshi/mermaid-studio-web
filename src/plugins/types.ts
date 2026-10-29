@@ -118,6 +118,8 @@ export interface ReorderSpec {
   acceptsInto?(source: string, ref: ElementRef, container: ElementRef | null): boolean;
   /** ref を container の中（null なら図の一番外）へ動かす変更。もう中にあって変わらなければ null */
   into?(source: string, ref: ElementRef, container: ElementRef | null): ActionResult | null;
+  /** 中へ落とす先を、外接矩形ではなく要素の形（path・circle など）で決める（venn の円や重なりは、矩形が隣の領域にかかる） */
+  shaped?: boolean;
   /**
    * axis が free の要素を、SVG の座標で by だけ動かした位置に置く変更。
    * 座標そのものが Mermaid の書き方である図種（quadrantChart の点・wardley の部品）だけが持つ（設計書 §6.3）
