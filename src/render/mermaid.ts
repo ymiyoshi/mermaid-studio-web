@@ -1,8 +1,8 @@
 import type { Mermaid } from 'mermaid';
 
 // 設計書 §5: mermaid.js による検証と描画。
-// securityLevel は常に 'strict'。mermaid の既定の `secure` 設定により、
-// frontmatter や %%{init}%% から securityLevel を上書きすることはできない（§9.4）。
+// securityLevel は常に 'strict'。`secure` 設定により、
+// frontmatter や %%{init}%% から securityLevel やラベルの消毒の設定を上書きすることはできない（§9.4）。
 // mermaid 本体は大きい（1MB 超）ので、起動を待たせないよう動的に読み込む。
 
 export type Theme = 'default' | 'dark' | 'forest' | 'neutral';
@@ -20,10 +20,24 @@ let wantedTheme: Theme | null = null;
 let appliedTheme: Theme | null = null;
 let loading: Promise<Mermaid> | null = null;
 
+/**
+ * ラベルの消毒で落とすタグ。style は mermaid の既定（dompurifyConfig を渡すと既定が置き換わるので残す）。
+ * 入力欄は、共有リンクの図に外部へ送信するフォーム（パスワード欄など）を仕込まれないように落とす
+ */
+const FORBID_TAGS = ['style', 'form', 'input', 'button', 'textarea', 'select', 'option'];
+
+/**
+ * 図の側（%%{init}%%・frontmatter）から変えられない設定。mermaid の既定の 6 つに dompurifyConfig を足す
+ * （mermaid は initialize で渡した一覧で置き換えるので、既定の分も書く）
+ */
+const SECURE_KEYS = ['secure', 'securityLevel', 'startOnLoad', 'maxTextSize', 'suppressErrorRendering', 'maxEdges', 'dompurifyConfig'];
+
 function baseConfig(theme: Theme, htmlLabels: boolean) {
   return {
     startOnLoad: false,
     securityLevel: 'strict' as const,
+    secure: SECURE_KEYS,
+    dompurifyConfig: { FORBID_TAGS },
     theme,
     suppressErrorRendering: true,
     htmlLabels,

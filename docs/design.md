@@ -383,7 +383,7 @@ interface HistoryTree { rootId: string; headId: string; nodes: Map<string, Histo
   - 形式: `https://<host>/#v1/<payload>`（バージョンの接頭辞で将来の形式変更に備える）
 - URL が 8,000 文字を超える場合は、長すぎると警告し、ファイルでの共有を勧める。
 - 共有 URL を開いたら、**新しい図として IndexedDB に取り込む**（既存の図を上書きしない）。
-- **共有された内容は信頼できない入力として扱う**: `securityLevel: 'strict'` を常に使い、frontmatter の `config` でも `securityLevel` の上書きを禁止する。
+- **共有された内容は信頼できない入力として扱う**: `securityLevel: 'strict'` を常に使い、frontmatter の `config` でも `securityLevel` の上書きを禁止する。ラベルの消毒では `<style>` に加えてフォームと入力欄（`form`・`input`・`button`・`textarea`・`select`）も落とし、この消毒の設定（`dompurifyConfig`）も図の側から変えられないようにする（パスワード欄などを仕込んだ図で、入力を外部へ送らせないため）。
 - 入力のたびに走る処理（入力補完など）は、行の長さに対して線形の時間で終わるようにする。共有リンクに長い 1 行を仕込まれると、二乗の正規表現で画面が固まるため（補完の `@{ shape:` は最後の `@{` から先だけを見て、末尾の語は後ろから 1 文字ずつ取り出す）。
 - 展開後の大きさに上限（512KB）を設け、超えたら途中で展開をやめて取り込まない。数百 KB の URL が数百 MB に展開される「展開爆弾」で巨大な図が保存されると、「最後に開いた図」として起動のたびに開かれ、アプリが起動できなくなるため。
 
@@ -428,7 +428,7 @@ interface HistoryTree { rootId: string; headId: string; nodes: Map<string, Histo
 | 応答性 | 図の操作から検証後のテキスト反映まで 50ms 以内（うち op 計算は 16ms 以内、残りは `mermaid.parse` の検証）。テキスト入力から再描画（200 ノード規模の flowchart）が 300ms 以内 |
 | 起動 | 初回 3 秒以内（mermaid は本体も図種ごとの部分も遅延読み込み。画面とエディタは mermaid を待たずに出し、本体の読み込みは文書の読み込みと並行して始める） |
 | 対応ブラウザ | Chrome/Edge 最新 2 版：全機能。Firefox/Safari 最新 2 版：ファイル保存はフォールバック、他は全機能 |
-| セキュリティ | `securityLevel: 'strict'`、CSP（`default-src 'self'; script-src 'self'; connect-src 'self'`）。`connect-src` で外部への送信も塞ぐ。共有された内容は常に信頼しない |
+| セキュリティ | `securityLevel: 'strict'`、CSP（`default-src 'self'; script-src 'self'; connect-src 'self'; form-action 'none'`）。`connect-src` で外部への送信を、`form-action` でフォームによる送信（通信ではなく画面の移動なので `connect-src` では止まらない）を塞ぐ。共有された内容は常に信頼しない |
 | アクセシビリティ | キーボードだけで主要な操作が可能。図の要素に `aria-label` を付ける |
 
 ---
@@ -462,7 +462,7 @@ Phase 0〜4 をすべて実装した。実装の中で決めたこと:
 ### 13.1 テストの現状（2026-10-24 時点）
 
 - Vitest 701 件（2026-10-28 時点。単体・SVG の対応付け・性質ベース・結合・コンポーネント・英語の UI・ファイルの関連付け）。行カバレッジ 71%（UI の部品は E2E で確かめる）。
-- Playwright の E2E 44 件（動画の書き出しの 2 件は、ほかが終わってから単独で走る）。本番ビルド（CSP・PWA 込み）を、インストール済みの Chrome で動かす。以前の既知の不具合 2 件（描き直しの間にフォーカスが外れる・履歴のプレビュー中に図を切り替えると画面が消える）は直し、再発防止のテストにした。
+- Playwright の E2E 48 件（動画の書き出しの 2 件は、ほかが終わってから単独で走る）。本番ビルド（CSP・PWA 込み）を、インストール済みの Chrome で動かす。以前の既知の不具合 2 件（描き直しの間にフォーカスが外れる・履歴のプレビュー中に図を切り替えると画面が消える）は直し、再発防止のテストにした。
 - svgMapper の回帰テストは、ブラウザで描いた SVG の見本（`tests/fixtures/rendered-svg.json`）を使う。mermaid の版を上げたら作り直す。
 
 ---

