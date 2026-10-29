@@ -91,6 +91,22 @@ describe('バックアップ', () => {
     expect(r.history.map((n) => n.id)).toEqual(e.history.map((n) => n.id));
   });
 
+  it('復元する本文は履歴の head の時点から作り直す（本文と履歴が食い違うと、開いて undo したときに壊れる）', () => {
+    let text = Text.of(['a']);
+    const tree = HistoryTree.create('old', 'a', 0);
+    for (const s of ['b', 'c']) {
+      const cs = ChangeSet.of({ from: text.length, insert: s }, text.length);
+      const sel = { anchor: 0, head: 0 };
+      tree.commit(cs, text, { origin: 'typing', label: s, groupKey: null, selBefore: sel, selAfter: sel, ts: 1, coalesce: false });
+      text = cs.apply(text);
+    }
+    const history = [...tree.nodes.values()];
+    const doc = { ...entry('old', '').doc, headId: tree.headId };
+    expect(remapEntry({ doc: { ...doc, text: '' }, history }, 'new').doc.text).toBe('abc');
+    // head が履歴に無ければルートに戻すので、本文もルートの時点にする
+    expect(remapEntry({ doc: { ...doc, text: 'abc', headId: 'missing' }, history }, 'new').doc).toMatchObject({ text: 'a', headId: tree.rootId });
+  });
+
   it('分岐・まとめ・整理をした実際の履歴は受け付ける', () => {
     let text = Text.of(['flowchart LR']);
     const tree = HistoryTree.create('a', text.toString(), 0);

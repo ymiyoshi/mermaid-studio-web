@@ -57,6 +57,19 @@ describe('ノードの削除', () => {
     await valid(out);
   });
 
+  it('; で区切った文のノードを消すと、区切りも一緒に消し、ほかの文は残す', async () => {
+    for (const [src, want] of [
+      ['flowchart LR\n  A; C --> D\n', 'flowchart LR\n  C --> D\n'],
+      ['flowchart LR\n  C --> D; A; E\n', 'flowchart LR\n  C --> D; E\n'],
+      ['flowchart LR\n  C --> D; A\n', 'flowchart LR\n  C --> D\n'],
+    ]) {
+      const out = apply(src, deleteNode(src, 'A'));
+      expect(out).toBe(want);
+      expect(parseFlowchart(out).edges.map((e) => `${e.from}-${e.to}`)).toEqual(['C-D']);
+      await valid(out);
+    }
+  });
+
   it('& でまとめたノードからも取り除く', async () => {
     const out = apply(SRC, deleteNode(SRC, 'E') as ChangeSpec);
     expect(out).toContain('    A --> F\n');

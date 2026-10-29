@@ -44,13 +44,20 @@ function show(cur: CurrentDoc) {
   emitReset(cur, selection);
 }
 
-/** 図を開く処理は 1 本ずつ順に走らせる（重なると、書き込み権を取ったまま手放さない図ができる） */
+/**
+ * 図を開く・読み直す処理は 1 本ずつ順に走らせる（重なると、書き込み権を取ったまま手放さない図ができたり、
+ * 後から終わった読み込みが別の図への切り替えを上書きしたりする）
+ */
 let opening: Promise<void> = Promise.resolve();
 
-export function openDoc(id: string): Promise<void> {
-  const run = opening.then(() => openDocNow(id));
+function serial(fn: () => Promise<void>): Promise<void> {
+  const run = opening.then(fn);
   opening = run.catch(() => {});
   return run;
+}
+
+export function openDoc(id: string): Promise<void> {
+  return serial(() => openDocNow(id));
 }
 
 async function openDocNow(id: string): Promise<void> {
@@ -58,32 +65,39 @@ async function openDocNow(id: string): Promise<void> {
   if (get().current?.id === id && currentLock) return;
   // 保存に失敗したら今の図に留まる。切り替えると、未保存の変更（履歴）がメモリから消えて失われる
   if (!(await flush())) return;
-  currentLock?.release();
-  currentLock = null;
 
+  // 今の図の書き込み権は、新しい図を読めてから手放す。先に手放すと、読めなかったときに
+  // 編集できる図が書き込み権なしで残り、別のタブと同時に書き込めてしまう
   const lock = await acquireDocLock(id);
-  const cur = await loadDoc(id, !lock.acquired);
-  if (!cur) {
-    lock.release();
-    return;
+  let cur: CurrentDoc | null = null;
+  try {
+    cur = await loadDoc(id, !lock.acquired);
+  } finally {
+    if (!cur) lock.release();
   }
+  if (!cur) return;
+  currentLock?.release();
   currentLock = lock;
   show(cur);
   void store.putSetting('lastOpened', id);
 
   if (!lock.acquired) {
     // 別タブが閉じて書き込み権が空いたら、最新の内容で編集可能にする
-    void lock.whenAcquired.then(() => {
-      if (currentLock === lock && get().current?.id === id) void reloadCurrent(false);
-    });
+    void lock.whenAcquired.then(() => reloadCurrent(id, lock, false));
   }
 }
 
-async function reloadCurrent(readOnly: boolean) {
-  const id = get().current?.id;
-  if (!id) return;
-  const cur = await loadDoc(id, readOnly);
-  if (cur) show(cur);
+/**
+ * 読み取り専用で開いている図 id を読み直す。読み込みを待つ間に別の図へ切り替わったり、
+ * 書き込み権が替わったりしていたら何もしない
+ */
+function reloadCurrent(id: string, lock: DocLock | null, readOnly: boolean): Promise<void> {
+  const unchanged = () => currentLock === lock && get().current?.id === id && get().current?.readOnly === true;
+  return serial(async () => {
+    if (!unchanged()) return;
+    const cur = await loadDoc(id, readOnly);
+    if (cur && unchanged()) show(cur);
+  });
 }
 
 export async function createDoc(text: string, title: string, label = t('history.create')): Promise<string> {
@@ -146,18 +160,32 @@ function replaceInList(rec: store.DocRecord) {
 }
 
 export async function trashDoc(id: string) {
-  if (get().current?.id === id) await flush();
+  // 保存に失敗したらゴミ箱に入れない。手放すと、未保存の変更（履歴）がメモリから消えて失われる
+  if (get().current?.id === id && !(await flush())) return;
   const rec = await store.updateDocMeta(id, { deletedAt: Date.now() });
   if (!rec) return;
   replaceInList(rec);
-  if (get().current?.id === id) {
-    currentLock?.release();
-    currentLock = null;
-    set({ current: null });
-    const next = get().docs.find((d) => d.deletedAt === null);
-    if (next) await openDoc(next.id);
-    else await createFromTemplate('flowchart');
-  }
+  if (get().current?.id === id) await leaveCurrent();
+}
+
+/** 開いている図を閉じて、残っている図（無ければ見本の図）を開く */
+async function leaveCurrent() {
+  currentLock?.release();
+  currentLock = null;
+  set({ current: null });
+  const next = get().docs.find((d) => d.deletedAt === null);
+  if (next) await openDoc(next.id);
+  else await createFromTemplate('flowchart');
+}
+
+/** 開いている図が別のタブでゴミ箱に入れられたか、消されたら、その図を閉じる */
+async function leaveIfRemoved() {
+  const cur = get().current;
+  if (!cur || get().docs.some((d) => d.id === cur.id && d.deletedAt === null)) return;
+  // 編集中の変更は保存してから閉じる（ゴミ箱の図はゴミ箱のまま書かれ、消された図には書かない）。
+  // 保存に失敗したら、変更を失わないように開いたままにする
+  if (!(await flush()) || get().current !== cur) return;
+  await leaveCurrent();
 }
 
 export async function restoreDoc(id: string) {
@@ -204,8 +232,9 @@ export async function init(opts: { skipInitialDoc?: Promise<boolean> } = {}) {
 
   onBroadcast(async (msg) => {
     if (msg.type === 'docs-changed' || msg.type === 'saved') set({ docs: await store.listDocs() });
+    if (msg.type === 'docs-changed') await leaveIfRemoved();
     const cur = get().current;
-    if (msg.type === 'saved' && cur && cur.readOnly && msg.docId === cur.id) await reloadCurrent(true);
+    if (msg.type === 'saved' && cur && cur.readOnly && msg.docId === cur.id) await reloadCurrent(cur.id, currentLock, true);
   });
 
   const flushNow = () => void flush();

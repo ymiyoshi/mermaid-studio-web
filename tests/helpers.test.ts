@@ -168,6 +168,12 @@ describe('キーワードの設定行', () => {
     expect(findKeyword(src, q)?.value).toBe('売上');
     expect(apply(src, setKeyword(src, q, '利益')!)).toBe('xychart\n  title "利益"\n');
   });
+
+  it('引用符で書く値に " を入れても、新しく足すときと同じく取り除いて構文を壊さない', () => {
+    const q = { ...spec, quoted: true };
+    const src = 'xychart\n  title "売上"\n';
+    expect(apply(src, setKeyword(src, q, 'a"b')!)).toBe('xychart\n  title "ab"\n');
+  });
 });
 
 describe('その他', () => {

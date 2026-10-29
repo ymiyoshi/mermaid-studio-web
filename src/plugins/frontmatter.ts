@@ -138,7 +138,11 @@ export function setFrontmatterValue(source: string, path: string[], value: strin
       const quoted = source[target.value.from - 1] === '"' || source[target.value.from - 1] === "'";
       return quoted ? { from: target.value.from, to: target.value.to, insert: v.replace(/["\\]/g, '') } : { from: target.value.from, to: target.value.to, insert: yamlValue(v) };
     }
-    return null;
+    // 値が空の葉（「theme:」）なら、コロンの直後に値を書く（後ろのコメントは残す）。子を持つキーには書かない
+    if (target.children.length > 0) return null;
+    const colon = target.line.from + target.indent + target.key.length + 1;
+    const rest = source.slice(colon, target.line.to);
+    return { from: colon, to: rest.trim() === '' ? target.line.to : colon, insert: ` ${yamlValue(v)}` };
   }
   if (v === '') return null;
   // 足りないキーを、見つかった祖先の子の最後（無ければ祖先の直後、祖先も無ければ閉じる --- の前）に足す

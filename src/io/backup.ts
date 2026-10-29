@@ -1,4 +1,4 @@
-import { ChangeSet } from '@codemirror/state';
+import { ChangeSet, Text } from '@codemirror/state';
 import type { HistoryNode } from '../core/history';
 import { flush, reloadDocList, showToast } from '../core/session';
 import * as store from '../storage/db';
@@ -152,6 +152,21 @@ function pickNode(n: HistoryNode, docId: string): HistoryNode {
   return node;
 }
 
+/** 履歴のノード id の時点の本文を、いちばん近いスナップショットから作り直す（validHistory を通った履歴だけに使う） */
+function textAtNode(history: HistoryNode[], id: string): string | null {
+  const byId = new Map(history.map((n) => [n.id, n]));
+  const path: HistoryNode[] = [];
+  for (let n = byId.get(id); n; n = n.parentId === null ? undefined : byId.get(n.parentId)) {
+    path.push(n);
+    if (n.snapshot !== null) break;
+  }
+  const base = path.pop();
+  if (!base || base.snapshot === null) return null;
+  let doc = Text.of(base.snapshot.split('\n'));
+  for (const n of path.reverse()) doc = ChangeSet.fromJSON(n.forward).apply(doc);
+  return doc.toString();
+}
+
 /**
  * 復元する図に新しい docId を振る（既存の図を上書きしないため）。
  * 履歴ノードの id は docId と組で一意なのでそのまま使える。
@@ -160,11 +175,14 @@ export function remapEntry(entry: BackupEntry, newId: string): BackupEntry {
   const history = entry.history.map((n) => pickNode(n, newId));
   const root = history.find((n) => n.parentId === null);
   const headOk = history.some((n) => n.id === entry.doc.headId);
+  const headId = headOk ? entry.doc.headId : (root?.id ?? entry.doc.headId);
   return {
     doc: {
       ...entry.doc,
       id: newId,
-      headId: headOk ? entry.doc.headId : (root?.id ?? entry.doc.headId),
+      headId,
+      // 本文は履歴の head の時点から作り直す。食い違うと、開いて undo したときに変更が本文に合わず例外になる
+      text: textAtNode(history, headId) ?? entry.doc.text,
       deletedAt: null,
       tags: Array.isArray(entry.doc.tags) ? entry.doc.tags.filter((x) => typeof x === 'string') : [],
     },
@@ -173,7 +191,8 @@ export function remapEntry(entry: BackupEntry, newId: string): BackupEntry {
 }
 
 export async function exportBackup() {
-  await flush();
+  // 保存に失敗したら書き出さない（未保存の変更が抜けた古い内容を、書き出せたと伝えてしまう）
+  if (!(await flush())) return;
   const docs = (await store.listDocs()).filter((d) => d.deletedAt === null);
   const entries = await Promise.all(docs.map(async (doc) => ({ doc, history: await store.loadHistory(doc.id) })));
   const json = JSON.stringify(buildBackup(entries));

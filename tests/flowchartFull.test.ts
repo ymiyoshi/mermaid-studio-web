@@ -88,6 +88,13 @@ describe('flowchart: linkStyle の番号を保つ', () => {
     expect(await edgeStyle(r.after, 'F', 'G')).toContain('#00f');
   });
 
+  it('同じ端点のエッジが並んでいても、消したエッジのスタイルだけを消し、残ったエッジのスタイルを保つ', async () => {
+    const src = 'flowchart LR\n  A --> B\n  A --> B\n  linkStyle 0 stroke:#f00\n  linkStyle 1 stroke:#00f\n';
+    const r = run('delete', src, [{ kind: 'edge', id: '0' }])!;
+    expect(r.after).toBe('flowchart LR\n  A --> B\n  linkStyle 0 stroke:#00f\n');
+    expect(await edgeStyle(r.after, 'A', 'B')).toContain('#00f');
+  });
+
   it('途中にエッジを足すと、後ろの番号を進める（カンマ区切りも default も扱う）', async () => {
     const src = SRC.replace('linkStyle 5 stroke:#00f', 'linkStyle 0,5 stroke:#00f\n    linkStyle default stroke-width:2px');
     const r = run('add-child', src, [{ kind: 'node', id: 'A' }])!;

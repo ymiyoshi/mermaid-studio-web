@@ -54,7 +54,8 @@ export function setKeyword(source: string, spec: KeywordSpec, value: string): Ch
   const cur = findKeyword(source, spec);
   if (cur) {
     if (value === '' && cur.line !== bodyLines(source).header) return removeLine(source, cur.line);
-    return { from: cur.from, to: cur.to, insert: value };
+    // 引用符の中に " は書けないので、新しく足すときと同じく取り除く
+    return { from: cur.from, to: cur.to, insert: spec.quoted ? value.replace(/"/g, '') : value };
   }
   if (value === '') return null;
   const { header, body } = bodyLines(source);

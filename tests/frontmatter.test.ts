@@ -40,6 +40,14 @@ describe('図の先頭の設定（frontmatter）', () => {
     expect(parseFrontmatter(out)!.entries.map((e) => e.key)).toEqual(['title', 'config']);
   });
 
+  it('値が空の葉（theme:）には、コロンの直後に値を書く。後ろのコメントは残し、子を持つキーには書かない', async () => {
+    expect(await set(`---\nconfig:\n  theme:\n---\n${BODY}`, THEME, 'base')).toBe(`---\nconfig:\n  theme: base\n---\n${BODY}`);
+    expect(await set(`---\nconfig:\n  theme: # 後で決める\n---\n${BODY}`, THEME, 'base')).toBe(
+      `---\nconfig:\n  theme: base # 後で決める\n---\n${BODY}`,
+    );
+    expect(setFrontmatterValue(`---\nconfig:\n  theme: base\n---\n${BODY}`, ['config'], 'x')).toBeNull();
+  });
+
   it('空にすると行を消し、子が無くなった親と、空になった frontmatter も消す', async () => {
     const full = `---\nconfig:\n  themeVariables:\n    primaryColor: "#ffcc00"\n---\n${BODY}`;
     expect(await set(full, PRIMARY, '')).toBe(BODY);

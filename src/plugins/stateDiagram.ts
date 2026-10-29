@@ -141,7 +141,11 @@ export const statePlugin: DiagramPlugin = {
 
   setProperty(source, ref, field, value) {
     if (ref?.kind === 'state') {
-      if (field === 'name') return VALID_NAME.test(value) && !/-/.test(value) ? renameToken(source, ref.id, value) : null;
+      if (field === 'name') {
+        // 別の状態の名前にすると、2 つの状態が黙って 1 つにまとまってしまう
+        const taken = () => bodyLines(source).body.some((l) => mentions(l, value));
+        return VALID_NAME.test(value) && !/-/.test(value) && !taken() ? renameToken(source, ref.id, value) : null;
+      }
       if (field === 'label') {
         const r = stateLabel(source, ref.id);
         if (r) return { from: r.from, to: r.to, insert: value };
