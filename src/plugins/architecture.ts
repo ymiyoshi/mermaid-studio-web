@@ -641,5 +641,24 @@ export const architecturePlugin: DiagramPlugin = {
       return change && { change, label, select: ref };
     },
   },
-};
 
+  // 構造（設計書 §17.2）: 親は in のグループ、線は両端の要素
+  structure: {
+    parent(source, ref) {
+      const p = parseArchitectureOnce(source);
+      const g = p.nodes.find((x) => x.kind === ref.kind && x.id === ref.id)?.parent?.value;
+      return g ? { kind: 'group', id: g } : null;
+    },
+    children(source, ref) {
+      if (ref.kind !== 'group') return [];
+      return parseArchitectureOnce(source)
+        .nodes.filter((x) => x.parent?.value === ref.id)
+        .map((x) => ({ kind: x.kind, id: x.id }));
+    },
+    links(source) {
+      const p = parseArchitectureOnce(source);
+      const end = (id: string) => ({ kind: p.nodes.find((x) => x.id === id)?.kind ?? 'service', id });
+      return p.edges.map((e, i) => ({ edge: { kind: 'edge', id: String(i) }, from: end(e.a), to: end(e.b) }));
+    },
+  },
+};

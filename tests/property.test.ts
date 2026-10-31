@@ -15,6 +15,7 @@ import { piePlugin } from '../src/plugins/dataPlugins';
 import { deleteRow, moveRow, setCell, tableRows } from '../src/plugins/table';
 import { findMermaidBlocks, replaceMermaidBlock } from '../src/io/markdown';
 import { BLOCK_SHAPES, blockPlugin } from '../src/plugins/block';
+import { duplicateFlow } from '../src/plugins/flowchartStructure';
 
 const RUNS = 100;
 
@@ -149,6 +150,34 @@ describe('flowchart の操作の性質', () => {
         }
       }),
       { numRuns: 200 },
+    );
+  });
+});
+
+describe('flowchart の複製の性質（設計書 §17.3）', () => {
+  it('ノードを選んで複製した結果は構文として正しく、元の行はすべて同じ順で残り、エッジの数は選んだノードどうしの分だけ増える', async () => {
+    await fc.assert(
+      fc.asyncProperty(flowchart, fc.subarray(IDS, { minLength: 1 }), async (source, ids) => {
+        fc.pre(await parses(source));
+        const doc = parseFlowchart(source);
+        const present = ids.filter((id) => doc.statements.some((st) => st.groups.some((g) => g.some((r) => r.id === id))));
+        fc.pre(present.length > 0);
+        const res = duplicateFlow(source, present.map((id) => ({ kind: 'node', id })));
+        expect(res).toBeTruthy();
+        const out = apply(source, res!.change);
+        expect(await parses(out)).toBe(true);
+        const before = source.split('\n');
+        const after = out.split('\n');
+        let j = 0;
+        for (const line of before) {
+          while (j < after.length && after[j] !== line) j++;
+          expect(j).toBeLessThan(after.length);
+          j++;
+        }
+        const inner = doc.edges.filter((e) => present.includes(e.from) && present.includes(e.to)).length;
+        expect(parseFlowchart(out).edges.length).toBe(doc.edges.length + inner);
+      }),
+      { numRuns: RUNS },
     );
   });
 });

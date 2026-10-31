@@ -7,7 +7,7 @@
 ```sh
 npm install        # .npmrc の legacy-peer-deps=true が必要（npm 10 の依存解決が落ちるため。消さない）。ignore-scripts=true も消さない（サプライチェーン攻撃への備え）
 npm run typecheck  # tsc（src・tests は tsconfig.json、e2e・perf は tsconfig.e2e.json）
-npm test           # Vitest（700 件前後。20 秒ほどで終わる）
+npm test           # Vitest（800 件前後。20 秒ほどで終わる）
 npm run test:e2e   # Playwright。本番ビルドを作って vite preview（4173 番）で配信し、インストール済みの Chrome で動かす（動画の書き出しの e2e/video.spec.ts は、ほかが終わってから単独で走る）
 npm run perf       # §11 の応答時間を測る（失敗にはしない。結果は表で出る）
 npm run build      # 型チェック + 本番ビルド

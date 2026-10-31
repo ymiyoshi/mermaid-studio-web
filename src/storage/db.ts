@@ -34,6 +34,14 @@ export interface FileBinding {
   markdown: string | null;
 }
 
+/** 開いたフォルダ（設計書 §17.9）。ハンドルを持っておき、次に起動したときも一覧に出す */
+export interface FolderRecord {
+  id: string;
+  name: string;
+  handle: FileSystemDirectoryHandle;
+  addedAt: number;
+}
+
 /** IndexedDB に置く形。長いスナップショットは圧縮して snapshotZ に入れる（§8.5） */
 type StoredNode = HistoryNode & { snapshotZ?: Uint8Array };
 
@@ -64,6 +72,7 @@ interface StudioDB extends DBSchema {
   files: { key: string; value: FileBinding };
   history: { key: [string, string]; value: StoredNode; indexes: { byDoc: string } };
   settings: { key: string; value: { key: string; value: unknown } };
+  folders: { key: string; value: FolderRecord };
 }
 
 export const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -71,7 +80,7 @@ export const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 let dbPromise: Promise<IDBPDatabase<StudioDB>> | null = null;
 
 export function db(name = 'mermaid-studio'): Promise<IDBPDatabase<StudioDB>> {
-  dbPromise ??= openDB<StudioDB>(name, 3, {
+  dbPromise ??= openDB<StudioDB>(name, 4, {
     upgrade(d, oldVersion) {
       if (oldVersion < 1) {
         d.createObjectStore('documents', { keyPath: 'id' });
@@ -81,6 +90,8 @@ export function db(name = 'mermaid-studio'): Promise<IDBPDatabase<StudioDB>> {
       }
       if (oldVersion < 2) d.createObjectStore('files', { keyPath: 'docId' });
       if (oldVersion < 3) d.createObjectStore('thumbs', { keyPath: 'docId' });
+      // 版 4: 開いたフォルダ（§17.9）。それまでのデータには触れない
+      if (oldVersion < 4) d.createObjectStore('folders', { keyPath: 'id' });
     },
     // 新しい版のアプリが別のタブで開かれたら、古い接続を閉じて読み込み直す
     blocking() {
@@ -194,6 +205,19 @@ export async function purgeExpiredTrash(now = Date.now()): Promise<number> {
   const expired = docs.filter((d) => d.deletedAt !== null && now - d.deletedAt > TRASH_RETENTION_MS);
   for (const d of expired) await purgeDoc(d.id);
   return expired.length;
+}
+
+export async function listFolders(): Promise<FolderRecord[]> {
+  const all = await (await db()).getAll('folders');
+  return all.sort((a, b) => a.addedAt - b.addedAt);
+}
+
+export async function putFolder(f: FolderRecord): Promise<void> {
+  await (await db()).put('folders', f);
+}
+
+export async function deleteFolder(id: string): Promise<void> {
+  await (await db()).delete('folders', id);
 }
 
 export async function getSetting<T>(key: string): Promise<T | undefined> {

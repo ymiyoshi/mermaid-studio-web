@@ -1,6 +1,7 @@
 import { createFromTemplate, openDoc, redo, setTheme, undo, useSession } from '../core/session';
 import { TEMPLATES } from '../core/templates';
 import { openFile, saveFile } from '../io/files';
+import { hasDirectoryAccess, openFolder } from '../io/folders';
 import { exportBackup, importBackup } from '../io/backup';
 import { useIo } from '../io/ioStore';
 import { copyShareLink } from '../io/shareActions';
@@ -8,6 +9,9 @@ import type { Theme } from '../render/mermaid';
 import { togglePane, useLayout } from './layoutStore';
 import { setKeymap, useKeymap } from './keymapStore';
 import { getLang, setLang, t } from '../i18n';
+import { useRender } from '../render/pipeline';
+import { TREE_KINDS, treeKindOf } from '../plugins/convertTree';
+import { convertCurrent } from './convertActions';
 
 // コマンドパレット（Ctrl+K）の中身。メニューやボタンにある操作を、キーボードだけで探して実行できるようにする。
 
@@ -26,7 +30,7 @@ const THEMES: Theme[] = ['default', 'neutral', 'forest', 'dark'];
 /** 図ビューに頼む操作（図ビューが受け取る） */
 export const DIAGRAM_COMMAND_EVENT = 'mmd-diagram-command';
 /** selectCursor: エディタのカーソルの行の要素を選ぶ（vi の gd） */
-export type DiagramCommand = 'fit' | 'zoomIn' | 'zoomOut' | 'togglePanel' | 'selectCursor';
+export type DiagramCommand = 'fit' | 'zoomIn' | 'zoomOut' | 'togglePanel' | 'toggleOutline' | 'selectCursor';
 export const runDiagramCommand = (cmd: DiagramCommand) => dispatchEvent(new CustomEvent(DIAGRAM_COMMAND_EVENT, { detail: cmd }));
 const diagram = (cmd: DiagramCommand) => () => runDiagramCommand(cmd);
 
@@ -42,6 +46,7 @@ export function buildCommands(): Command[] {
   // 分け方と並びは、ヘッダーのメニュー（HeaderMenus.tsx）にそろえる
   g(t('cmd.groupFile'), [
     { id: 'open', title: t('menu.open'), keys: 'Ctrl+O', run: () => void openFile() },
+    hasDirectoryAccess() && { id: 'openFolder', title: t('menu.openFolder'), run: () => void openFolder() },
     hasDoc && { id: 'save', title: t('menu.save'), keys: 'Ctrl+S', run: () => void saveFile() },
     hasDoc && { id: 'saveAs', title: t('menu.saveAs'), keys: 'Ctrl+Shift+S', run: () => void saveFile({ saveAs: true }) },
     hasDoc && { id: 'export', title: t('menu.exportImage'), keys: 'Ctrl+Shift+E', run: () => useIo.setState({ exportOpen: true }) },
@@ -60,11 +65,20 @@ export function buildCommands(): Command[] {
     hasDoc && { id: 'zoomIn', title: t('toolbar.zoomIn'), run: diagram('zoomIn') },
     hasDoc && { id: 'zoomOut', title: t('toolbar.zoomOut'), run: diagram('zoomOut') },
     hasDoc && { id: 'togglePanel', title: t('cmd.togglePanel'), run: diagram('togglePanel') },
+    hasDoc && { id: 'toggleOutline', title: t('cmd.toggleOutline'), run: diagram('toggleOutline') },
     { id: 'present', title: t('present.open'), run: () => useLayout.setState({ presentOpen: true }) },
     hasDoc && { id: 'snippets', title: t('snippet.open'), run: () => useLayout.setState({ snippetsOpen: true }) },
     hasDoc && { id: 'timelapse', title: t('timelapse.open'), run: () => useLayout.setState({ timelapseOpen: true }) },
     { id: 'keyHelp', title: t('cmd.keyHelp'), keys: useKeymap.getState().keymap === 'vi' ? '?' : undefined, run: () => useKeymap.setState({ helpOpen: true }) },
   ]);
+  // 木の図種どうしの変換（§17.7）
+  const tree = treeKindOf(useRender.getState().diagramType);
+  g(
+    t('cmd.groupConvert'),
+    tree && editable
+      ? TREE_KINDS.filter((k) => k !== tree).map((k) => ({ id: `convert:${k}`, title: t('convert.to', { type: k }), run: () => void convertCurrent(tree, k) }))
+      : [],
+  );
   g(t('cmd.groupSettings'), [
     { id: 'lang', title: t('cmd.switchLang'), run: () => setLang(getLang() === 'ja' ? 'en' : 'ja') },
     useKeymap.getState().keymap === 'vi'

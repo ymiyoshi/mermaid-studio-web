@@ -1,4 +1,5 @@
 import type { ChangeSpec } from '@codemirror/state';
+import { treeDuplicate, treeStructure } from './structure';
 import type { DiagramPlugin, DiagramTarget, PropertyField, SourceRange } from './types';
 import { labelText, withGeneric } from './generic';
 import { indentOf, uniqueId } from './source';
@@ -207,6 +208,16 @@ export const mindmapPlugin: DiagramPlugin = {
     accepts: (ref, target) => ref.kind === 'topic' && target.kind === 'topic' && target.id !== '0',
     allowed: (_n, target, place) => place === 'into' || !!target.parent,
     result: (_n, index) => ({ label: t('mm.history.drag'), select: { kind: 'topic', id: String(index) } }),
+  }),
+
+  structure: treeStructure((source) => mindNodes(source).map((m, i) => ({ node: m.node, ref: { kind: 'topic', id: String(i) } }))),
+
+  // 複製（設計書 §17.3）: 根は 1 つしか書けないので、根より下のトピックだけ
+  duplicate: treeDuplicate({
+    items: (source) => mindNodes(source).map((m, i) => ({ node: m.node, ref: { kind: 'topic', id: String(i) } })),
+    accepts: (ref) => ref.kind === 'topic',
+    allowed: (n) => n.parent !== null,
+    copyRef: (index) => ({ kind: 'topic', id: String(index) }),
   }),
 };
 

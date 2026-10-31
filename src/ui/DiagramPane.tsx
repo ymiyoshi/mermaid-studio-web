@@ -15,6 +15,8 @@ import { composeEach } from '../plugins/source';
 import { useKeymap } from './keymapStore';
 import { focusPane, registerViPane } from './viDispatch';
 import { nearestInDirection, type Dir } from './viKeys';
+import { followLinks, linksOf } from '../plugins/structure';
+import { OutlinePanel, outlineRows } from './OutlinePanel';
 import { t } from '../i18n';
 
 /** 再描画をまたいで同じ要素を指すためのキー。意味上の参照があればそれを使う */
@@ -53,8 +55,15 @@ const VI_NORMAL = [
   'y y',
   'm',
   'v',
+  '] e',
+  '[ e',
+  '] g',
+  '[ g',
+  '> >',
+  '< <',
+  'p',
 ];
-const VI_VISUAL = [...VI_MOVE, 'd', 'x', 'v', '<Esc>', 'u', '<C-r>'];
+const VI_VISUAL = [...VI_MOVE, 'd', 'x', 'v', '<Esc>', 'u', '<C-r>', 'y', 'p'];
 /** zh などで図をずらす量（画面の座標） */
 const VI_PAN_PX = 80;
 
@@ -156,6 +165,17 @@ export function DiagramPane() {
       void putSetting('panelOpen', !v);
       return !v;
     });
+  // 要素の一覧（設計書 §17.4）
+  const [outlineOpen, setOutlineOpen] = useState(false);
+  const [outlineQuery, setOutlineQuery] = useState('');
+  useEffect(() => {
+    void getSetting<boolean>('outlineOpen').then((v) => v !== undefined && setOutlineOpen(v));
+  }, []);
+  const toggleOutline = () =>
+    setOutlineOpen((v) => {
+      void putSetting('outlineOpen', !v);
+      return !v;
+    });
   // コマンドパレットからの操作
   const commandRef = useRef<(cmd: DiagramCommand) => void>(() => {});
   commandRef.current = (cmd) => {
@@ -163,6 +183,7 @@ export function DiagramPane() {
     else if (cmd === 'zoomIn') zoomBy(1.25);
     else if (cmd === 'zoomOut') zoomBy(1 / 1.25);
     else if (cmd === 'togglePanel') togglePanel();
+    else if (cmd === 'toggleOutline') toggleOutline();
     else if (cmd === 'selectCursor' && cursorKey) setSelectedKey(cursorKey);
   };
   useEffect(() => {
@@ -262,8 +283,37 @@ export function DiagramPane() {
       x.el.classList.toggle('mmd-cursor', k === cursorKey && k !== selectedKey);
       x.el.classList.toggle('mmd-connect-from', !!connect && sameRef(x.ref, connect.from));
       x.el.classList.toggle('mmd-dragging', k === dragKey);
+      // 読み上げ（設計書 §11・§17.2）: 選べる要素に名前を付ける
+      if (x.range !== null || x.ref !== undefined) {
+        x.el.setAttribute('role', 'graphics-symbol');
+        x.el.setAttribute('aria-label', x.label.trim() || x.ref?.id || '');
+      }
     }
   }, [targets, selectedKeys, cursorKey, connect, dragKey]);
+
+  /** 選んだ要素の読み上げの文（名前・囲む枠・つながる線の数） */
+  const announcement = useMemo(() => {
+    if (!selected) return '';
+    const name = selected.label.trim() || selected.ref?.id || '';
+    if (!selected.ref || !plugin.structure) return t('a11y.selected', { name });
+    const parentRef = plugin.structure.parent(svgSource, selected.ref);
+    const parent = parentRef ? targets.find((x) => sameRef(x.ref, parentRef)) : undefined;
+    const links = linksOf(plugin.structure, svgSource, selected.ref);
+    const out = links.filter((l) => sameRef(l.from, selected.ref)).length;
+    const inn = links.filter((l) => sameRef(l.to, selected.ref)).length;
+    return [
+      t('a11y.selected', { name }),
+      parentRef ? t('a11y.inside', { name: parent?.label.trim() || parentRef.id }) : '',
+      plugin.structure.links ? t('a11y.links', { out: String(out), in: String(inn) }) : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+  }, [selected, plugin, svgSource, targets]);
+
+  const outline = useMemo(
+    () => (outlineOpen ? outlineRows(targets, plugin, svgSource, keyOf, outlineQuery) : []),
+    [outlineOpen, targets, plugin, svgSource, outlineQuery],
+  );
 
   // 選択中の要素の操作ボタンの位置。ラベルが要素の外にある（メッセージの本文は線の上など）ので、
   // 要素とラベルを合わせた範囲の上に置き、ラベルを覆わない（覆うとダブルクリックやドラッグができない）
@@ -290,10 +340,12 @@ export function DiagramPane() {
       showToast(t('action.unsupported'));
       return;
     }
-    pendingFocus.current = res.focus !== undefined ? { ref: res.focus } : res.focusAt !== undefined ? { at: res.focusAt } : null;
+    // 足した要素のラベル編集は、適用してから予約する。適用の前（検証の間）に予約すると、ひとつ前の操作の描画が
+    // その間に終わったとき、まだ要素の無い図で予約を使い切ってしまう（描き直しを待たずに続けて操作したとき）
+    pendingFocus.current = null;
     const r = await applyDiagramChange(res.change, { label: res.label, selAfter: res.selAfter });
+    if (r === 'ok') pendingFocus.current = res.focus !== undefined ? { ref: res.focus } : res.focusAt !== undefined ? { at: res.focusAt } : null;
     if (r !== 'ok') {
-      pendingFocus.current = null;
       if (r === 'invalid') showToast(t('action.invalid'));
     } else if (danger) {
       setSelectedKey(null);
@@ -486,6 +538,21 @@ export function DiagramPane() {
       else setSelectedKey(null);
       return;
     }
+    // コピー・貼り付け・複製（設計書 §17.3）。貼り付けは、同じ図の中でコピーした要素を複製する
+    const mod = (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey;
+    const letter = e.key.toLowerCase();
+    if (mod && (letter === 'c' || letter === 'v' || letter === 'd')) {
+      if (letter === 'c') {
+        if (copySelection()) e.preventDefault();
+      } else if (letter === 'v') {
+        e.preventDefault();
+        void duplicate();
+      } else if (selectionRefs().length > 0) {
+        e.preventDefault();
+        void duplicate(selectionRefs());
+      }
+      return;
+    }
     if (!canEdit || !selected) return;
     const key = e.key === 'Backspace' ? 'Delete' : e.key;
     if (multi.length > 1) {
@@ -634,6 +701,109 @@ export function DiagramPane() {
     );
   };
 
+  // ---- 構造をたどる（設計書 §17.2）と複製（§17.3） ----
+
+  /** 参照の要素を図の上で探す（描き直しを待つ間の番号で指す要素は選ばない） */
+  const targetOf = (ref: ElementRef | null | undefined) => (ref && usable(ref) ? (targets.find((x) => sameRef(x.ref, ref)) ?? null) : null);
+
+  /** ]e / [e: 線をたどって、出ていく先（入ってくる元）へ。線を選んでいれば、その端へ */
+  const viFollow = (forward: boolean, count: number) => {
+    const spec = plugin.structure;
+    const source = useSession.getState().current?.text.toString();
+    if (!spec?.links || source === undefined) return showToast(t('struct.unsupported'));
+    let ref = viCursor()?.ref;
+    let found: DiagramTarget | null = null;
+    for (let n = 0; n < count && ref; n++) {
+      const next = followLinks(spec, source, ref, forward).map(targetOf).find((x) => x !== null) ?? null;
+      if (!next) break;
+      found = next;
+      ref = next.ref;
+    }
+    if (found) viSelect(found);
+    else showToast(t(forward ? 'struct.noOutgoing' : 'struct.noIncoming'));
+  };
+
+  /** ]g / [g: 囲む枠（親）へ・中の最初の要素（子）へ */
+  const viNest = (out: boolean, count: number) => {
+    const spec = plugin.structure;
+    const source = useSession.getState().current?.text.toString();
+    if (!spec || source === undefined) return showToast(t('struct.unsupported'));
+    let ref = viCursor()?.ref;
+    let found: DiagramTarget | null = null;
+    for (let n = 0; n < count && ref; n++) {
+      const next = out ? targetOf(spec.parent(source, ref)) : (spec.children(source, ref).map(targetOf).find((x) => x !== null) ?? null);
+      if (!next) break;
+      found = next;
+      ref = next.ref;
+    }
+    if (found) viSelect(found);
+    else showToast(t(out ? 'struct.noParent' : 'struct.noChild'));
+  };
+
+  /** >> / <<: 前の兄弟の中へ入れる・囲む枠の外へ出す（ドラッグでの移動と同じ変更を使う） */
+  const viShift = async (inward: boolean) => {
+    const spec = plugin.reorder;
+    const st = plugin.structure;
+    const ref = selected?.ref;
+    const source = useSession.getState().current?.text.toString();
+    if (!spec || !st || !ref || source === undefined || !canEdit || !usable(ref)) return;
+    const parent = st.parent(source, ref);
+    let res: ActionResult | null = null;
+    if (inward) {
+      // 同じ親の中で、ソースの順で直前にある「中へ入れられる」要素
+      const list = pickable();
+      const at = list.indexOf(selected);
+      // 選んだ要素が候補の中に無ければ（線を選んでいるときなど）、「直前」が決まらない
+      const before = at < 0 ? [] : list.slice(0, at).reverse();
+      const sameParent = (r: ElementRef) => {
+        const p = st.parent(source, r);
+        return p === null ? parent === null : sameRef(p, parent);
+      };
+      const into = before.find((x) => x.ref && !sameRef(x.ref, ref) && sameParent(x.ref) && spec.acceptsInto?.(source, ref, x.ref));
+      res = into?.ref ? (spec.into?.(source, ref, into.ref) ?? null) : null;
+    } else if (parent) {
+      // 木の図種は親のすぐ後ろへ、枠の図種は親の外側の枠（無ければ図の一番外）へ
+      res =
+        spec.move && spec.accepts?.(ref, parent, source)
+          ? spec.move(source, ref, parent, false)
+          : (spec.into?.(source, ref, st.parent(source, parent)) ?? null);
+    }
+    if (res) await commit(res);
+    else showToast(t(inward ? 'struct.cannotIndent' : 'struct.cannotOutdent'));
+  };
+
+  /** コピーした要素（文書と、コピーしたときのテキスト。番号で指す要素は、テキストが変わっていなければ使う） */
+  const copied = useRef<{ docId: string; text: string; refs: ElementRef[] } | null>(null);
+  const selectionRefs = () => (multi.length > 1 ? multi : selected?.ref ? [selected.ref] : []);
+
+  const copySelection = (quiet = false) => {
+    const cur = useSession.getState().current;
+    const refs = selectionRefs().filter((r) => plugin.duplicate?.accepts(r));
+    if (!cur || refs.length === 0) return false;
+    copied.current = { docId: cur.id, text: cur.text.toString(), refs };
+    if (!quiet) showToast(t('dup.copied', { n: String(refs.length) }));
+    return true;
+  };
+
+  /** 要素を複製する（refs を省くと、コピーした要素） */
+  const duplicate = async (refs?: ElementRef[]) => {
+    const cur = useSession.getState().current;
+    if (!cur || !canEdit) return;
+    const source = cur.text.toString();
+    let list = refs;
+    if (!list) {
+      const c = copied.current;
+      if (!c || c.docId !== cur.id) return showToast(t('dup.nothing'));
+      // 番号で指す要素は、コピーした後にテキストが変わると別の要素を指すので使わない
+      list = c.refs.filter((r) => !isPositional(r) || c.text === source);
+      if (list.length === 0) return showToast(t('dup.stale'));
+    }
+    const spec = plugin.duplicate;
+    const usableRefs = list.filter((r) => spec?.accepts(r) && usable(r));
+    if (!spec || usableRefs.length === 0) return showToast(t('dup.unsupported'));
+    await commit(spec.run(source, usableRefs));
+  };
+
   /** 操作を count 回、順に当てる（1 回ごとに 1 ステップ） */
   const runRepeated = async (action: DiagramAction, ref: ElementRef, count: number) => {
     for (let n = 0; n < count; n++) await runAction(action, [ref]);
@@ -765,6 +935,29 @@ export function DiagramPane() {
         return true;
       case 'y y':
         viYank();
+        copySelection(true);
+        return true;
+      case 'y':
+        // ビジュアルモードの y: 選んだ要素をまとめてコピーする（p で複製する）
+        copySelection();
+        setVisual(false);
+        return true;
+      case 'p':
+        // 選んでいる要素を複製する。yy・y でコピーした要素があれば、それを複製する
+        if (canEdit) void (copied.current?.docId === useSession.getState().current?.id ? duplicate() : duplicate(selectionRefs()));
+        if (visual) setVisual(false);
+        return true;
+      case '] e':
+      case '[ e':
+        viFollow(cmd === '] e', count);
+        return true;
+      case '] g':
+      case '[ g':
+        viNest(cmd === '] g', count);
+        return true;
+      case '> >':
+      case '< <':
+        void viShift(cmd === '> >');
         return true;
       case 'm': {
         const vp = viewport.current;
@@ -856,6 +1049,9 @@ export function DiagramPane() {
           ),
         )}
         <span className="spacer" />
+        <button className={`btn${outlineOpen ? ' active' : ''}`} onClick={toggleOutline} aria-pressed={outlineOpen}>
+          {t('outline.toggle')}
+        </button>
         <button className={`btn${panelOpen ? ' active' : ''}`} onClick={togglePanel} aria-pressed={panelOpen}>
           {t('panel.toggle')}
         </button>
@@ -876,6 +1072,26 @@ export function DiagramPane() {
         <div className="connect-banner" role="status">
           {connect.action.prompt}
         </div>
+      )}
+      <div className="diagram-body">
+      {outlineOpen && (
+        <OutlinePanel
+          rows={outline}
+          selectedKeys={selectedKeys}
+          query={outlineQuery}
+          onQuery={setOutlineQuery}
+          onSelect={(row, additive) => {
+            const x = row.target;
+            if (x.ref && !usable(x.ref)) return;
+            const k = row.key;
+            if (additive && x.ref) setSelectedKeys((ks) => (ks.includes(k) ? ks.filter((y) => y !== k) : [...ks, k]));
+            else {
+              setSelectedKey(k);
+              if (x.range) revealRange(x.range.from, x.range.to);
+            }
+            scrollIntoView(x.el);
+          }}
+        />
       )}
       <div
         className={`diagram-viewport${stale ? ' stale' : ''}${editable ? ' editable' : ''}${connect ? ' connecting' : ''}`}
@@ -938,6 +1154,19 @@ export function DiagramPane() {
                   {a.key && <kbd>{a.key}</kbd>}
                 </button>
               ))}
+            {canEdit && selected.ref && plugin.duplicate?.accepts(selected.ref) && (
+              <button
+                role="menuitem"
+                className="menu-item"
+                onClick={() => {
+                  setMenu(null);
+                  void duplicate(selectionRefs());
+                }}
+              >
+                <span>{t('dup.menu')}</span>
+                <kbd>Ctrl+D</kbd>
+              </button>
+            )}
             <button
               role="menuitem"
               className="menu-item"
@@ -1005,6 +1234,10 @@ export function DiagramPane() {
             }}
           />
         )}
+        <div className="sr-only" role="status" aria-live="polite">
+          {announcement}
+        </div>
+      </div>
       </div>
       {panelOpen && (
         <PropertyPanel key={plugin.type} plugin={plugin} selected={selected?.ref ?? null} selectedFrom={selected?.range?.from ?? null} multi={multi} editable={canEdit} />

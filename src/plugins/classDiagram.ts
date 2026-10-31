@@ -1,4 +1,5 @@
 import type { ChangeSpec } from '@codemirror/state';
+import { linkStructure } from './structure';
 import type { DiagramPlugin, DiagramTarget, PropertyField, SourceRange } from './types';
 import { labelText, withGeneric } from './generic';
 import { bodyLines, indentOf, insertLineAfter, rangeInInserted, uniqueId, type SourceLine } from './source';
@@ -306,4 +307,9 @@ export const classPlugin: DiagramPlugin = {
       },
     },
   ],
+
+  // 構造（設計書 §17.2）: 線は関係
+  structure: linkStructure((source) =>
+    parseRelations(source).map((x) => ({ edge: { kind: 'relation', id: String(x.index) }, from: { kind: 'class', id: x.a }, to: { kind: 'class', id: x.b } })),
+  ),
 };

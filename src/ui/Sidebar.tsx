@@ -14,6 +14,7 @@ import { getSetting, putSetting, type DocRecord } from '../storage/db';
 import { useKeymap } from './keymapStore';
 import { openRelativeDoc, registerViPane } from './viDispatch';
 import { locale, t } from '../i18n';
+import { FolderSection } from './FolderSection';
 
 const dateFmt = new Intl.DateTimeFormat(locale(), { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
@@ -153,6 +154,7 @@ export function Sidebar() {
           ))}
         </div>
       )}
+      {!showTrash && <FolderSection query={query} />}
       <ul className="doc-list">
         {visible.length === 0 && (
           <li className="doc-empty">{showTrash && q === '' ? t('doc.emptyTrash') : t('doc.noMatch')}</li>

@@ -1,4 +1,5 @@
 import type { ChangeSpec } from '@codemirror/state';
+import { treeDuplicate, treeStructure } from './structure';
 import type { DiagramPlugin, DiagramTarget, PropertyField, SourceRange } from './types';
 import { labelText, withGeneric } from './generic';
 import { bodyLines } from './source';
@@ -148,7 +149,7 @@ export function parseTreeView(source: string): { entries: TreeEntry[]; boxed: bo
 }
 
 /** 名前の書き方。区切りになる文字列を含む・引用符で始まる名前は引用符で囲む。両方の引用符を含む名前は書けない */
-function nameToken(name: string, dir: boolean): string | null {
+export function nameToken(name: string, dir: boolean): string | null {
   if (!name || /[\r\n]/.test(name)) return null;
   const plain = !/^["'\s]|\s$|\s(?::::|icon\(|##|%%)|%%/.test(name) && !name.endsWith('/');
   const slash = dir ? '/' : '';
@@ -331,6 +332,18 @@ export const treeViewPlugin: DiagramPlugin = {
     accepts: (ref, target) => ref.kind === KIND && target.kind === KIND,
     allowed: (_e, target, place) => place !== 'into' || target.slash !== null,
     result: (_e, index) => ({ label: t('tv.history.move'), select: { kind: KIND, id: String(index) } }),
+  }),
+
+  structure: treeStructure((source) => parseTreeView(source).entries.map((e, i) => ({ node: e, ref: { kind: KIND, id: String(i) } }))),
+
+  // 複製（設計書 §17.3）: 罫線で書いた木は、写すと罫線がつながらないので複製しない
+  duplicate: treeDuplicate({
+    items: (source) => {
+      const p = parseTreeView(source);
+      return p.boxed ? null : p.entries.map((e, i) => ({ node: e, ref: { kind: KIND, id: String(i) } }));
+    },
+    accepts: (ref) => ref.kind === KIND,
+    copyRef: (index) => ({ kind: KIND, id: String(index) }),
   }),
 };
 

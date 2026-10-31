@@ -6,6 +6,10 @@ import { DIAGRAM_THEMES, THEME_COLORS, getFrontmatterValue, setFrontmatterValue 
 import { withValue } from '../plugins/types';
 import { addRow, deleteRow, moveRow, setCell, tableRows, type TableDef, type TableRow } from '../plugins/table';
 import { FieldInput } from './FieldInput';
+import { KIND_LABEL } from './kindLabels';
+import { NO_ACC_TYPES, readAcc, setAcc, type AccKey } from '../plugins/accessibility';
+import { TREE_KINDS, treeKindOf } from '../plugins/convertTree';
+import { convertCurrent } from './convertActions';
 import { t } from '../i18n';
 
 // 設計書 §6.1: 選択した要素の属性をフォームで編集するパネルと、行を表で編集するタブ。
@@ -20,45 +24,6 @@ interface Props {
   editable: boolean;
 }
 
-const KIND_LABEL: Record<string, string> = {
-  node: t('misc.kind.node'),
-  edge: t('misc.kind.edge'),
-  participant: t('misc.kind.participant'),
-  message: t('misc.kind.message'),
-  class: t('misc.kind.class'),
-  relation: t('misc.kind.relation'),
-  state: t('misc.kind.state'),
-  transition: t('misc.kind.transition'),
-  entity: t('misc.kind.entity'),
-  relationship: t('misc.kind.relationship'),
-  topic: t('misc.kind.topic'),
-  column: t('misc.kind.column'),
-  card: t('misc.kind.card'),
-  item: t('misc.kind.item'),
-  note: t('misc.kind.note'),
-  block: t('misc.kind.block'),
-  'block-item': t('misc.kind.blockItem'),
-  section: t('misc.kind.section'),
-  subgraph: t('misc.kind.subgraph'),
-  service: t('misc.kind.service'),
-  group: t('misc.kind.group'),
-  junction: t('misc.kind.junction'),
-  row: t('misc.kind.row'),
-  effect: t('misc.kind.effect'),
-  cause: t('misc.kind.cause'),
-  entry: t('misc.kind.entry'),
-  anchor: t('misc.kind.anchor'),
-  component: t('misc.kind.component'),
-  link: t('misc.kind.link'),
-  pipeline: t('misc.kind.pipeline'),
-  frame: t('misc.kind.frame'),
-  set: t('misc.kind.set'),
-  union: t('misc.kind.union'),
-  vtext: t('misc.kind.vtext'),
-  domain: t('misc.kind.domain'),
-  rule: t('misc.kind.rule'),
-  term: t('misc.kind.term'),
-};
 
 // 図ビューはパンやドラッグのたびに描き直されるので、props が変わらないときは描き直さない
 const NONE: ElementRef[] = [];
@@ -101,6 +66,17 @@ export const PropertyPanel = memo(function PropertyPanel({ plugin, selected, sel
             <div className="panel-heading">
               {selected ? `${KIND_LABEL[selected.kind] ?? selected.kind}: ${selected.id}` : t('panel.diagram')}
             </div>
+            {!selected && !NO_ACC_TYPES.has(plugin.type) && <AccFields source={source} editable={editable} />}
+            {!selected && treeKindOf(plugin.type) && (
+              <div className="convert-row">
+                <span className="muted small">{t('convert.heading')}</span>
+                {TREE_KINDS.filter((k) => k !== plugin.type).map((k) => (
+                  <button key={k} className="btn" disabled={!editable} onClick={() => void convertCurrent(treeKindOf(plugin.type)!, k)}>
+                    {t('convert.to', { type: k })}
+                  </button>
+                ))}
+              </div>
+            )}
             {fields.length === 0 ? (
               <p className="muted small">{selected ? t('panel.noFields') : t('panel.selectHint')}</p>
             ) : (
@@ -198,6 +174,27 @@ const colorPath = (key: string) => ['config', 'themeVariables', key];
  * テーマ: 図の先頭の設定（frontmatter の config.theme と config.themeVariables）を編集する。
  * 書き換えるのは frontmatter の対象の行だけ。図の本文には触れない
  */
+/** 読み上げ用の題名と説明（設計書 §17.6）。どの図種でも図全体の欄として出す */
+function AccFields({ source, editable }: { source: string; editable: boolean }) {
+  const row = (key: AccKey, label: string, placeholder: string) => (
+    <label className="prop-row">
+      <span>{label}</span>
+      <FieldInput
+        field={{ type: 'text', label, value: readAcc(source, key)?.text ?? '', placeholder }}
+        disabled={!editable}
+        historyLabel={t('history.prop', { name: label })}
+        build={(src, v) => setAcc(src, key, v)}
+      />
+    </label>
+  );
+  return (
+    <div className="prop-grid acc-fields">
+      {row('accTitle', t('acc.title'), t('acc.titleHint'))}
+      {row('accDescr', t('acc.descr'), t('acc.descrHint'))}
+    </div>
+  );
+}
+
 function ThemeFields({ source, editable }: { source: string; editable: boolean }) {
   const theme = getFrontmatterValue(source, THEME_PATH);
   const clear = async (path: string[], label: string) => {

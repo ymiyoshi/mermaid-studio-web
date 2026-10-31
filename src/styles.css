@@ -2205,3 +2205,164 @@ button.tag {
   outline: 2px solid var(--select);
   outline-offset: -2px;
 }
+
+/* 図の要素の一覧（設計書 §17.4） */
+.diagram-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.diagram-body > .diagram-viewport {
+  min-width: 0;
+}
+
+.outline-panel {
+  display: flex;
+  flex-direction: column;
+  width: 220px;
+  min-width: 140px;
+  max-width: 50%;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  resize: horizontal;
+  overflow: hidden;
+}
+
+.outline-search {
+  margin: 6px;
+}
+
+.outline-list {
+  flex: 1;
+  margin: 0;
+  padding: 0 0 6px;
+  overflow: auto;
+  list-style: none;
+}
+
+.outline-row {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 3px 8px;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.outline-row:hover {
+  background: var(--surface-2);
+}
+
+.outline-row:focus-visible {
+  outline: 2px solid var(--select);
+  outline-offset: -2px;
+}
+
+.outline-row.selected {
+  background: var(--select-soft);
+}
+
+.outline-row.context {
+  color: var(--muted);
+}
+
+.outline-kind {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.outline-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.outline-empty {
+  margin: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+@media (max-width: 760px) {
+  .outline-panel {
+    width: 160px;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 木の図種の変換（設計書 §17.7） */
+.convert-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 6px 0 8px;
+}
+
+.acc-fields {
+  margin-bottom: 8px;
+}
+
+/* 開いたフォルダ（設計書 §17.9） */
+.folder-section {
+  border-bottom: 1px solid var(--border);
+  max-height: 40%;
+  overflow: auto;
+}
+
+.folder-head {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px 0;
+}
+
+.folder-toggle {
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-files {
+  margin: 0;
+  padding: 2px 8px 6px 24px;
+  list-style: none;
+}
+
+.folder-file {
+  display: block;
+  width: 100%;
+  padding: 2px 4px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.folder-file:hover {
+  background: var(--surface-2);
+}
