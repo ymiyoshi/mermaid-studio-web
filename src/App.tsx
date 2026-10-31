@@ -12,6 +12,9 @@ import { CommandPalette } from './ui/CommandPalette';
 import { SnippetsDialog } from './ui/SnippetsDialog';
 import { PresentationView } from './ui/PresentationView';
 import { TimelapseHost } from './ui/TimelapseView';
+import { KeyHelp } from './ui/KeyHelp';
+import { loadKeymap, useKeymap } from './ui/keymapStore';
+import { useViKeys } from './ui/viDispatch';
 import { t } from './i18n';
 
 const MOBILE_TABS: { id: MobileTab; label: () => string }[] = [
@@ -29,10 +32,13 @@ export function App() {
   const mobile = useMobile();
   const setWidths = (f: (l: typeof layout) => Partial<typeof layout>) => useLayout.setState((s) => f(s));
 
+  const helpOpen = useKeymap((s) => s.helpOpen);
   useEffect(() => {
     void loadLayout();
+    void loadKeymap();
   }, []);
   useGlobalShortcuts();
+  useViKeys();
   useExternalChangeCheck();
   const dragging = useFileDrop();
 
@@ -78,6 +84,7 @@ export function App() {
         {layout.snippetsOpen && <SnippetsDialog onClose={() => useLayout.setState({ snippetsOpen: false })} />}
         {layout.presentOpen && <PresentationView onClose={closePresentation} />}
         {layout.timelapseOpen && <TimelapseHost />}
+        {helpOpen && <KeyHelp onClose={() => useKeymap.setState({ helpOpen: false })} />}
         {toast && (
           <div className="toast" role="status" key={toast.id}>
             {toast.message}
@@ -120,6 +127,7 @@ export function App() {
       {layout.snippetsOpen && <SnippetsDialog onClose={() => useLayout.setState({ snippetsOpen: false })} />}
       {layout.presentOpen && <PresentationView onClose={closePresentation} />}
       {layout.timelapseOpen && <TimelapseHost />}
+      {helpOpen && <KeyHelp onClose={() => useKeymap.setState({ helpOpen: false })} />}
       {dragging && <div className="drop-overlay">{t('file.drop')}</div>}
       {toast && (
         <div className="toast" role="status" key={toast.id}>

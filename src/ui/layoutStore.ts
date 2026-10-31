@@ -19,12 +19,14 @@ export const DEFAULT_LAYOUT: Layout = { sidebar: 240, editor: 440, history: 280,
 interface Transient {
   mobileTab: MobileTab;
   paletteOpen: boolean;
+  /** コマンドパレットを開いたときの入力（vi の : で開くと ':'） */
+  paletteQuery: string;
   timelapseOpen: boolean;
   snippetsOpen: boolean;
   presentOpen: boolean;
 }
 
-export const useLayout = create<Layout & Transient>(() => ({ ...DEFAULT_LAYOUT, mobileTab: 'diagram', paletteOpen: false, timelapseOpen: false, snippetsOpen: false, presentOpen: false }));
+export const useLayout = create<Layout & Transient>(() => ({ ...DEFAULT_LAYOUT, mobileTab: 'diagram', paletteOpen: false, paletteQuery: '', timelapseOpen: false, snippetsOpen: false, presentOpen: false }));
 
 export async function loadLayout() {
   const saved = await getSetting<Partial<Layout>>('layout');

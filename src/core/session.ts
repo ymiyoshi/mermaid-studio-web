@@ -21,6 +21,8 @@ export {
   revealRange,
   setSelection,
   setTags,
+  travel,
+  travelTime,
   undo,
   type ApplyMeta,
 } from './editing';

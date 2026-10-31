@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   createFromTemplate,
   duplicateDoc,
@@ -11,11 +11,16 @@ import {
 import { TEMPLATES } from '../core/templates';
 import { thumbSrc, useThumbs } from '../render/thumbs';
 import { getSetting, putSetting, type DocRecord } from '../storage/db';
+import { useKeymap } from './keymapStore';
+import { openRelativeDoc, registerViPane } from './viDispatch';
 import { locale, t } from '../i18n';
 
 const dateFmt = new Intl.DateTimeFormat(locale(), { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 type SortKey = 'updated' | 'created' | 'title';
+
+/** vi のキー（設計書 §16.5） */
+const VI_SIDEBAR = ['j', 'k', '/', 'd d', 'o'];
 
 const SORTS: Record<SortKey, (a: DocRecord, b: DocRecord) => number> = {
   updated: (a, b) => b.updatedAt - a.updatedAt,
@@ -56,10 +61,39 @@ export function Sidebar() {
         .sort(SORTS[sort]),
     [docs, showTrash, tag, hashTag, q, sort],
   );
+  // gt / gT と vi の j / k は、一覧に見えている並びで次の図を開く（ゴミ箱を見ているときは全体の並び）
+  useEffect(() => {
+    useKeymap.setState({ docOrder: showTrash ? [] : visible.map((d) => d.id) });
+    // 一覧を閉じたら、古い並びを使わない（gt / gT は更新日時の順になる）
+    return () => useKeymap.setState({ docOrder: [] });
+  }, [visible, showTrash]);
+
+  const root = useRef<HTMLElement>(null);
+  useEffect(
+    () =>
+      registerViPane('sidebar', {
+        commands: () => VI_SIDEBAR,
+        run: (cmd, count) => {
+          if (cmd === 'j' || cmd === 'k') openRelativeDoc(cmd === 'j' ? count : -count);
+          else if (cmd === '/') root.current?.querySelector<HTMLInputElement>('.sidebar-search input')?.focus();
+          else if (cmd === 'd d') {
+            const id = useSession.getState().current?.id;
+            if (id) void trashDoc(id);
+          } else if (cmd === 'o') {
+            setShowTrash(false);
+            setMenuOpen(true);
+            requestAnimationFrame(() => root.current?.querySelector<HTMLElement>('.menu .menu-item')?.focus());
+          } else return false;
+          return true;
+        },
+      }),
+    [],
+  );
+
   const allTags = useMemo(() => [...new Set(docs.filter((d) => d.deletedAt === null).flatMap((d) => d.tags))].sort(), [docs]);
 
   return (
-    <aside className="pane sidebar">
+    <aside className="pane sidebar" ref={root} tabIndex={-1}>
       <div className="pane-toolbar">
         <span className="pane-title">{showTrash ? t('doc.trash') : t('doc.list')}</span>
         <span className="spacer" />

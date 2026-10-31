@@ -6,6 +6,7 @@ import { useIo } from '../io/ioStore';
 import { copyShareLink } from '../io/shareActions';
 import type { Theme } from '../render/mermaid';
 import { togglePane, useLayout } from './layoutStore';
+import { setKeymap, useKeymap } from './keymapStore';
 import { getLang, setLang, t } from '../i18n';
 
 // コマンドパレット（Ctrl+K）の中身。メニューやボタンにある操作を、キーボードだけで探して実行できるようにする。
@@ -24,7 +25,8 @@ const THEMES: Theme[] = ['default', 'neutral', 'forest', 'dark'];
 
 /** 図ビューに頼む操作（図ビューが受け取る） */
 export const DIAGRAM_COMMAND_EVENT = 'mmd-diagram-command';
-export type DiagramCommand = 'fit' | 'zoomIn' | 'zoomOut' | 'togglePanel';
+/** selectCursor: エディタのカーソルの行の要素を選ぶ（vi の gd） */
+export type DiagramCommand = 'fit' | 'zoomIn' | 'zoomOut' | 'togglePanel' | 'selectCursor';
 const diagram = (cmd: DiagramCommand) => () => dispatchEvent(new CustomEvent(DIAGRAM_COMMAND_EVENT, { detail: cmd }));
 
 export function buildCommands(): Command[] {
@@ -60,6 +62,10 @@ export function buildCommands(): Command[] {
     hasDoc && { id: 'snippets', title: t('snippet.open'), run: () => useLayout.setState({ snippetsOpen: true }) },
     hasDoc && { id: 'timelapse', title: t('timelapse.open'), run: () => useLayout.setState({ timelapseOpen: true }) },
     { id: 'lang', title: t('cmd.switchLang'), run: () => setLang(getLang() === 'ja' ? 'en' : 'ja') },
+    useKeymap.getState().keymap === 'vi'
+      ? { id: 'keymap', title: t('cmd.keymapStandard'), run: () => setKeymap('standard') }
+      : { id: 'keymap', title: t('cmd.keymapVi'), run: () => setKeymap('vi') },
+    { id: 'keyHelp', title: t('cmd.keyHelp'), keys: useKeymap.getState().keymap === 'vi' ? '?' : undefined, run: () => useKeymap.setState({ helpOpen: true }) },
     ...THEMES.map((th) => ({ id: `theme:${th}`, title: t('cmd.theme', { theme: th }), run: () => setTheme(th) })),
   ]);
   g(

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useRender } from '../render/pipeline';
-import { applyDiagramChange, revealRange, showToast, useSession } from '../core/session';
+import { applyDiagramChange, redo, revealRange, showToast, undo, useSession } from '../core/session';
 import { pluginFor } from '../plugins/registry';
 import { isPositional, refKey, sameRef, type ActionResult, type DiagramAction, type DiagramTarget, type ElementRef } from '../plugins/types';
 import { InlineLabelEditor, type LabelSession } from './InlineLabelEditor';
@@ -12,10 +12,53 @@ import { DRAG_THRESHOLD_PX, fixSvgSize, rectIn, unionRect, usePanZoom, type Rect
 import { contains, markContainers, resolveDrop, type DragCandidate, type DropResult } from './reorderDrop';
 import { DIAGRAM_COMMAND_EVENT, type DiagramCommand } from './commands';
 import { composeEach } from '../plugins/source';
+import { useKeymap } from './keymapStore';
+import { focusPane, registerViPane } from './viDispatch';
+import { nearestInDirection, type Dir } from './viKeys';
 import { t } from '../i18n';
 
 /** 再描画をまたいで同じ要素を指すためのキー。意味上の参照があればそれを使う */
 const keyOf = (x: DiagramTarget) => (x.ref ? `e:${refKey(x.ref)}` : x.id);
+
+/** vi のキー（設計書 §16.4）。ノーマルモードとビジュアルモードで受け付けるコマンド */
+const VI_MOVE = ['h', 'j', 'k', 'l', 'w', 'b', 'g g', 'G'];
+const VI_NORMAL = [
+  ...VI_MOVE,
+  '/',
+  'n',
+  'N',
+  'g d',
+  'z h',
+  'z j',
+  'z k',
+  'z l',
+  'z z',
+  '+',
+  '-',
+  '=',
+  'i',
+  'a',
+  '<CR>',
+  'c c',
+  'S',
+  'o',
+  'd d',
+  'x',
+  'J',
+  'K',
+  'c e',
+  'u',
+  '<C-r>',
+  '.',
+  'y y',
+  'm',
+  'v',
+];
+const VI_VISUAL = [...VI_MOVE, 'd', 'x', 'v', '<Esc>', 'u', '<C-r>'];
+/** zh などで図をずらす量（画面の座標） */
+const VI_PAN_PX = 80;
+
+const norm = (x: string) => x.normalize('NFKC').toLowerCase();
 
 /** 操作が要素に使えるか */
 const applies = (a: DiagramAction, ref: ElementRef | undefined) => !!ref && (a.appliesTo ?? ['node']).includes(ref.kind);
@@ -95,7 +138,7 @@ export function DiagramPane() {
 
   const viewport = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLDivElement>(null);
-  const { view, fit, zoomBy, scrollIntoView, beginDrag, moveDrag, endDrag } = usePanZoom(viewport, canvas, () => endReorder());
+  const { view, fit, zoomBy, scrollIntoView, panBy, center, beginDrag, moveDrag, endDrag } = usePanZoom(viewport, canvas, () => endReorder());
   const [targets, setTargets] = useState<DiagramTarget[]>([]);
   // 選択中の要素（先頭が主な選択。Shift / Ctrl を押しながらのクリックで足し引きする）
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
@@ -120,6 +163,7 @@ export function DiagramPane() {
     else if (cmd === 'zoomIn') zoomBy(1.25);
     else if (cmd === 'zoomOut') zoomBy(1 / 1.25);
     else if (cmd === 'togglePanel') togglePanel();
+    else if (cmd === 'selectCursor' && cursorKey) setSelectedKey(cursorKey);
   };
   useEffect(() => {
     const on = (e: Event) => commandRef.current((e as CustomEvent<DiagramCommand>).detail);
@@ -149,8 +193,8 @@ export function DiagramPane() {
     [selectedKeys, targets],
   );
 
-  const startLabelEdit = (target: DiagramTarget) => {
-    const base = { key: crypto.randomUUID(), targetKey: keyOf(target), original: target.label };
+  const startLabelEdit = (target: DiagramTarget, caret?: LabelSession['caret']) => {
+    const base = { key: crypto.randomUUID(), targetKey: keyOf(target), original: target.label, caret };
     if (target.range) {
       setSelectedKey(keyOf(target));
       setSession({ ...base, range: target.range });
@@ -430,8 +474,10 @@ export function DiagramPane() {
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     const target = e.target as Element;
-    // 形の一覧の中のキー（Tab での移動・Enter での選択）と、操作ボタンの上の Enter は、ボタン自身に任せる
+    // 形の一覧の中のキー（Tab での移動・Enter での選択）と、操作ボタンの上の Enter は、ボタン自身に任せる。
+    // 右クリックのメニューの中も同じ（Esc だけはメニューを閉じるのに使う）
     if (target.closest('.inline-label-editor, .shape-action-palette')) return;
+    if (target.closest('.context-menu') && e.key !== 'Escape') return;
     if (e.key === 'Enter' && target.closest('.element-toolbar button')) return;
     if (e.key === 'Escape') {
       if (reorder.current) endReorder();
@@ -458,6 +504,320 @@ export function DiagramPane() {
       startLabelEdit(selected);
     }
   };
+
+  // ---- vi のキー（設計書 §16.4）。キーの受け取りは viDispatch が行い、ここでは図の上の操作をする ----
+  const keymap = useKeymap((s) => s.keymap);
+  const pendingKeys = useKeymap((s) => s.pendingKeys);
+  const [visual, setVisual] = useState(false);
+  /** 検索の欄に打っている文字（開いていなければ null） */
+  const [search, setSearch] = useState<string | null>(null);
+  const lastQuery = useRef('');
+  /** . で繰り返す、最後の図の操作。図種が変わったら繰り返さないよう、図種と操作の ID で覚える */
+  const lastAction = useRef<{ type: string; id: string } | null>(null);
+  // 選択が無くなったら（クリックで外したなど）ビジュアルモードを終える
+  useEffect(() => {
+    if (selectedKeys.length === 0) setVisual(false);
+  }, [selectedKeys.length]);
+
+  /** vi で選べる要素を、ソースの順に並べたもの。番号で指す要素は、描いた図が今のテキストと合っているときだけ選ぶ */
+  const pickable = () =>
+    targets
+      .map((x, i) => ({ x, at: x.range?.from ?? x.insertAt?.at ?? Number.MAX_SAFE_INTEGER - targets.length + i }))
+      .filter(({ x }) => (x.range !== null || x.ref !== undefined) && (!x.ref || usable(x.ref)))
+      .sort((a, b) => a.at - b.at)
+      .map(({ x }) => x);
+
+  /** 移動の起点。ビジュアルモードでは最後に足した要素 */
+  const viCursor = () => {
+    const k = visual ? selectedKeys.at(-1) : selectedKey;
+    return targets.find((x) => keyOf(x) === k) ?? null;
+  };
+
+  const viSelect = (x: DiagramTarget) => {
+    const k = keyOf(x);
+    if (visual) setSelectedKeys((ks) => [...ks.filter((y) => y !== k), k]);
+    else setSelectedKey(k);
+    scrollIntoView(x.el);
+    if (x.range) revealRange(x.range.from, x.range.to);
+  };
+
+  const viMoveDir = (dir: Dir, count: number) => {
+    const vp = viewport.current;
+    const list = pickable();
+    if (!vp || list.length === 0) return;
+    const start = viCursor();
+    if (!start) return viSelect(list[0]);
+    let cur: DiagramTarget = start;
+    for (let n = 0; n < count; n++) {
+      const from: DiagramTarget = cur;
+      const cands = list.filter((x) => x !== from);
+      const i = nearestInDirection(
+        targetRect(from, vp),
+        cands.map((x) => targetRect(x, vp)),
+        dir,
+      );
+      if (i < 0) break;
+      cur = cands[i];
+    }
+    viSelect(cur);
+  };
+
+  const viMoveOrder = (to: number | 'first' | 'last') => {
+    const list = pickable();
+    if (list.length === 0) return;
+    const cur = viCursor();
+    const i = cur ? list.indexOf(cur) : -1;
+    const j = to === 'first' ? 0 : to === 'last' ? list.length - 1 : i < 0 ? 0 : Math.min(Math.max(i + to, 0), list.length - 1);
+    viSelect(list[j]);
+  };
+
+  /** ラベルに q を含む要素を、今の要素の次（back なら前）から探す。端まで行ったら反対の端から続ける */
+  const viFind = (q: string, back: boolean, count = 1) => {
+    if (q === '') return;
+    const list = pickable();
+    const hits = list.filter((x) => norm(x.label).includes(norm(q)));
+    if (hits.length === 0) return showToast(t('vi.searchNone', { q }));
+    let at = list.indexOf(viCursor() as DiagramTarget);
+    let found: DiagramTarget | undefined;
+    for (let n = 0; n < count; n++) {
+      const from = at;
+      found = back
+        ? ([...hits].reverse().find((x) => list.indexOf(x) < from) ?? hits.at(-1))
+        : (hits.find((x) => list.indexOf(x) > from) ?? hits[0]);
+      at = list.indexOf(found!);
+    }
+    if (found) viSelect(found);
+  };
+
+  /**
+   * 並べ替え（J / K）を count 回。プラグインの ArrowDown / ArrowUp の操作があればそれを 1 回ずつ（1 回ごとに 1 ステップ）、
+   * 無ければドラッグと同じ移動で count 個先の隣へ 1 回で動かす
+   */
+  const viSwap = async (down: boolean, count: number) => {
+    const first = selected?.ref;
+    if (!selected || !first || !editable) return;
+    const bound = elementActions.find((a) => a.key === (down ? 'ArrowDown' : 'ArrowUp') && a.arity === 1);
+    if (bound) {
+      // 番号で指す要素（メッセージなど）は動かすと番号が変わるので、操作が返す移動後の参照で続ける
+      let ref = first;
+      for (let n = 0; n < count; n++) {
+        const source = useSession.getState().current?.text.toString();
+        const res = source === undefined ? null : bound.run(source, [ref]);
+        if (!res) break;
+        await commit(res);
+        if (useSession.getState().current?.text.toString() === source) break;
+        ref = res.select ?? ref;
+      }
+      return;
+    }
+    const spec = plugin.reorder;
+    const source = useSession.getState().current?.text.toString();
+    if (!spec?.move || source === undefined || !spec.axis(source, first)) return;
+    const list = pickable();
+    const i = list.indexOf(selected);
+    const side = down ? list.slice(i + 1) : list.slice(0, i).reverse();
+    const accepted = side.filter((x) => x.ref && spec.accepts?.(first, x.ref, source));
+    const next = accepted[Math.min(count, accepted.length) - 1];
+    if (next?.ref) await commit(spec.move(source, first, next.ref, !down));
+  };
+
+  /** 要素のソース（ラベルの範囲を含む行）をコピーする */
+  const viYank = () => {
+    const text = useSession.getState().current?.text;
+    if (!selected?.range || !text) return;
+    const from = text.lineAt(selected.range.from).from;
+    const to = text.lineAt(selected.range.to).to;
+    if (!navigator.clipboard) return showToast(t('vi.yankFailed'));
+    void navigator.clipboard.writeText(text.sliceString(from, to)).then(
+      () => showToast(t('vi.yanked')),
+      () => showToast(t('vi.yankFailed')),
+    );
+  };
+
+  /** 操作を count 回、順に当てる（1 回ごとに 1 ステップ） */
+  const runRepeated = async (action: DiagramAction, ref: ElementRef, count: number) => {
+    for (let n = 0; n < count; n++) await runAction(action, [ref]);
+  };
+
+  const viRun = (cmd: string, count: number): boolean => {
+    const repeat = (f: () => void) => {
+      for (let n = 0; n < count; n++) f();
+    };
+    const ref = selected?.ref;
+    switch (cmd) {
+      case 'h':
+      case 'j':
+      case 'k':
+      case 'l':
+        viMoveDir(cmd, count);
+        return true;
+      case 'w':
+        viMoveOrder(count);
+        return true;
+      case 'b':
+        viMoveOrder(-count);
+        return true;
+      case 'g g':
+        viMoveOrder('first');
+        return true;
+      case 'G':
+        viMoveOrder('last');
+        return true;
+      case '/':
+        setSearch('');
+        return true;
+      case 'n':
+      case 'N':
+        viFind(lastQuery.current, cmd === 'N', count);
+        return true;
+      case 'g d':
+        if (selected?.range) {
+          revealRange(selected.range.from, selected.range.to);
+          focusPane('editor');
+        }
+        return true;
+      case 'z h':
+        panBy(VI_PAN_PX * count, 0);
+        return true;
+      case 'z l':
+        panBy(-VI_PAN_PX * count, 0);
+        return true;
+      case 'z j':
+        panBy(0, -VI_PAN_PX * count);
+        return true;
+      case 'z k':
+        panBy(0, VI_PAN_PX * count);
+        return true;
+      case 'z z':
+        if (selected) center(selected.el);
+        return true;
+      case '+':
+        zoomBy(1.25 ** count);
+        return true;
+      case '-':
+        zoomBy(1 / 1.25 ** count);
+        return true;
+      case '=':
+        fit();
+        return true;
+      case 'i':
+      case 'a':
+      case 'c c':
+      case 'S':
+        if (selected && editable && !session) startLabelEdit(selected, cmd === 'i' ? 'start' : cmd === 'a' ? 'end' : 'clear');
+        return true;
+      case '<CR>':
+        // 接続モード: 選んでいる要素へ接続する。それ以外は標準の Enter（ラベルの編集）に任せる
+        if (!connect) return false;
+        if (ref && (connect.action.targetKinds ?? connect.action.appliesTo ?? ['node']).includes(ref.kind)) {
+          void runAction(connect.action, [connect.from, ref]);
+          setConnect(null);
+        }
+        return true;
+      case 'o':
+      case 'd d':
+      case 'x':
+      case '.': {
+        if (!canEdit) return true;
+        const del = cmd === 'd d' || cmd === 'x';
+        if (del && multi.length > 1) {
+          void deleteMany(multi);
+          return true;
+        }
+        // 3dd: 選んだ要素から、ソースの順で 3 つをまとめて消す（履歴は 1 ステップ）
+        if (del && count > 1 && selected && ref) {
+          const list = pickable();
+          const refs = list
+            .slice(list.indexOf(selected))
+            .flatMap((x) => (x.ref ? [x.ref] : []))
+            .slice(0, count);
+          void deleteMany(refs);
+          return true;
+        }
+        const last = lastAction.current;
+        const action =
+          cmd === '.'
+            ? last && last.type === plugin.type
+              ? elementActions.find((a) => a.id === last.id)
+              : undefined
+            : elementActions.find((a) => a.key === (cmd === 'o' ? 'Tab' : 'Delete') && a.arity === 1);
+        if (action && ref) {
+          lastAction.current = { type: plugin.type, id: action.id };
+          // 消す操作は、回数が 1 のときだけここに来る（上でまとめて消す）
+          void runRepeated(action, ref, del ? 1 : count);
+        }
+        return true;
+      }
+      case 'J':
+      case 'K':
+        void viSwap(cmd === 'J', count);
+        return true;
+      case 'c e': {
+        const action = elementActions.find((a) => a.arity === 2);
+        if (action && canEdit) triggerAction(action);
+        return true;
+      }
+      case 'u':
+        repeat(undo);
+        return true;
+      case '<C-r>':
+        repeat(redo);
+        return true;
+      case 'y y':
+        viYank();
+        return true;
+      case 'm': {
+        const vp = viewport.current;
+        if (selected && vp) {
+          const r = targetRect(selected, vp);
+          setMenu({ x: r.left, y: r.top + r.height });
+          // キーボードで選べるよう、最初の項目へフォーカスを移す（Tab で次へ、Enter で実行、Esc で閉じる）
+          requestAnimationFrame(() => vp.querySelector<HTMLElement>('.context-menu .menu-item:not(:disabled)')?.focus());
+        }
+        return true;
+      }
+      case 'v':
+        if (visual) {
+          setVisual(false);
+          setSelectedKeys((ks) => ks.slice(-1));
+        } else {
+          setVisual(true);
+          if (!selected) viMoveOrder('first');
+        }
+        return true;
+      case 'd':
+        // ビジュアルモードの d / x: 選んだ要素をまとめて消す（履歴は 1 ステップ）
+        if (multi.length > 1) {
+          if (canEdit) void deleteMany(multi);
+        } else if (ref) {
+          const del = elementActions.find((a) => a.key === 'Delete' && a.arity === 1);
+          if (del && canEdit) void runAction(del, [ref]);
+        }
+        setVisual(false);
+        return true;
+      case '<Esc>':
+        setVisual(false);
+        setSelectedKeys((ks) => ks.slice(-1));
+        return true;
+    }
+    return false;
+  };
+  const viRef = useRef({ run: viRun, visual });
+  viRef.current = { run: viRun, visual };
+  useEffect(
+    () =>
+      registerViPane('diagram', {
+        commands: () => (viRef.current.visual ? VI_VISUAL : VI_NORMAL),
+        // ビジュアルモードの x は d と同じ
+        run: (cmd, count) => viRef.current.run(cmd === 'x' && viRef.current.visual ? 'd' : cmd, count),
+      }),
+    [],
+  );
+  const viMode = search !== null ? 'search' : connect ? 'connect' : visual ? 'visual' : 'normal';
+  // メニューを閉じて（項目を実行して）フォーカスの行き先が無くなったら、図に戻す
+  useEffect(() => {
+    if (!menu && keymap === 'vi' && document.activeElement === document.body) viewport.current?.focus();
+  }, [menu, keymap]);
 
   // 右クリック: 要素に使える操作のメニュー
   const onContextMenu = (e: React.MouseEvent) => {
@@ -604,6 +964,32 @@ export function DiagramPane() {
             )}
           </div>
         )}
+        {search !== null && (
+          <div className="vi-search" onPointerDown={(e) => e.stopPropagation()}>
+            <input
+              autoFocus
+              value={search}
+              placeholder={t('vi.searchPlaceholder')}
+              aria-label={t('vi.searchPlaceholder')}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                // 変換確定の Enter では決めない
+                if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+                if (e.key === 'Enter' || e.key === 'Escape') {
+                  e.preventDefault();
+                  if (e.key === 'Enter') {
+                    lastQuery.current = search;
+                    viFind(search, false);
+                  }
+                  setSearch(null);
+                  viewport.current?.focus();
+                }
+              }}
+              onBlur={() => setSearch(null)}
+            />
+          </div>
+        )}
         {session && (
           <InlineLabelEditor
             key={session.key}
@@ -624,6 +1010,12 @@ export function DiagramPane() {
         <PropertyPanel key={plugin.type} plugin={plugin} selected={selected?.ref ?? null} selectedFrom={selected?.range?.from ?? null} multi={multi} editable={canEdit} />
       )}
       <div className="pane-footer">
+        {keymap === 'vi' && (
+          <span className="vi-status">
+            <span className={`vi-mode ${viMode}`}>{t(`vi.mode.${viMode}`)}</span>
+            {pendingKeys && <kbd>{pendingKeys}</kbd>}
+          </span>
+        )}
         {plugin.actions?.some((a) => a.key === 'Tab')
           ? t('diagram.hintActions')
           : plugin.actions

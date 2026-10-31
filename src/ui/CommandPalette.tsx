@@ -1,14 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { buildCommands, filterCommands, type Command } from './commands';
+import { useLayout } from './layoutStore';
+import { runEx } from './viDispatch';
 import { t } from '../i18n';
 
 // コマンドパレット（Ctrl+K / Ctrl+Shift+P）。打って絞り込み、↑↓ で選んで Enter で実行する。
+// ':' で始めると Ex コマンド（:w・:earlier 10m など。設計書 §16.2）の欄になる。
 
 export function CommandPalette({ onClose }: { onClose(): void }) {
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(() => useLayout.getState().paletteQuery);
   const [active, setActive] = useState(0);
   const commands = useMemo(() => buildCommands(), []);
-  const shown = useMemo(() => filterCommands(commands, query), [commands, query]);
+  const ex = query.startsWith(':');
+  const shown = useMemo(
+    (): Command[] =>
+      ex
+        ? [{ id: 'ex', group: t('vi.exGroup'), title: query.length > 1 ? query : t('vi.exHint'), run: () => void (query.trim().length > 1 && runEx(query)) }]
+        : filterCommands(commands, query),
+    [commands, query, ex],
+  );
   const list = useRef<HTMLUListElement>(null);
   const previousFocus = useRef<Element | null>(document.activeElement);
 

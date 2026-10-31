@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { duplicateFromHistory, jumpTo, nameCheckpoint, pruneBranches, showToast, useSession } from '../core/session';
+import { duplicateFromHistory, jumpTo, nameCheckpoint, pruneBranches, redo, showToast, undo, useSession } from '../core/session';
 import type { HistoryNode, HistoryTree, Origin } from '../core/history';
 import { renderSvg } from '../render/mermaid';
 import { layoutHistory } from './historyLayout';
 import { CompareView } from './CompareView';
 import { useLayout } from './layoutStore';
+import { registerViPane } from './viDispatch';
 import { locale, t } from '../i18n';
 
 const ROW_H = 30;
@@ -23,6 +24,26 @@ const ORIGIN_ICON: Record<Origin, string> = {
   'file-load': '⇩',
   restore: '↺',
 };
+
+/** vi のキー（設計書 §16.5） */
+const VI_HISTORY = ['j', 'k', 'h', 'l', 'u', '<C-r>', '=', 'm', 'g p'];
+
+/** head から根へたどって最初に兄弟のある版から、dir の向きの兄弟の分岐の先端（最後に訪れた子をたどる）。無ければ null */
+export function siblingBranchTip(tree: HistoryTree, dir: -1 | 1): string | null {
+  let node = tree.head;
+  while (node.parentId !== null) {
+    const parent = tree.get(node.parentId);
+    if (parent.children.length > 1) {
+      const i = parent.children.indexOf(node.id);
+      const sib = parent.children[(i + dir + parent.children.length) % parent.children.length];
+      let tip = tree.get(sib);
+      while (tip.children.length > 0) tip = tree.get(tip.lastChild ?? tip.children.at(-1)!);
+      return tip.id;
+    }
+    node = parent;
+  }
+  return null;
+}
 
 const timeFmt = new Intl.DateTimeFormat(locale(), { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
@@ -145,6 +166,36 @@ export function HistoryPane() {
 
   useEffect(() => () => void (hoverTimer.current && clearTimeout(hoverTimer.current)), []);
 
+  // vi のキー: k / j で親・子の版へ、h / l で隣の分岐へ
+  useEffect(
+    () =>
+      registerViPane('history', {
+        commands: () => VI_HISTORY,
+        run: (cmd, count) => {
+          const cur = useSession.getState().current;
+          if (!cur) return false;
+          const repeat = (f: () => void) => {
+            for (let n = 0; n < count; n++) f();
+          };
+          if (cmd === 'k' || cmd === 'u') repeat(undo);
+          else if (cmd === 'j' || cmd === '<C-r>') repeat(redo);
+          else if (cmd === 'h' || cmd === 'l') {
+            const tip = siblingBranchTip(cur.tree, cmd === 'h' ? -1 : 1);
+            if (tip) jumpTo(tip);
+          } else if (cmd === '=') {
+            const head = cur.tree.head;
+            setCompare({ before: head.parentId ?? head.id, after: head.id });
+          } else if (cmd === 'm') {
+            if (!cur.readOnly) setNaming(cur.tree.headId);
+          } else if (cmd === 'g p') {
+            if (cur.tree.nodes.size > 1) setTimelapse(true);
+          } else return false;
+          return true;
+        },
+      }),
+    [],
+  );
+
   // 別の図に切り替えたら、前の図の版のプレビューを閉じる（待っているプレビューも出さない）
   const docId = current?.id;
   useEffect(() => {
@@ -153,7 +204,7 @@ export function HistoryPane() {
     setCompare(null);
   }, [docId]);
 
-  if (!current || !layout) return <section className="pane history-pane" />;
+  if (!current || !layout) return <section className="pane history-pane" tabIndex={-1} />;
 
   const width = layout.lanes * LANE_W + 6;
   const cx = (lane: number) => lane * LANE_W + LANE_W / 2 + 3;
@@ -179,7 +230,7 @@ export function HistoryPane() {
   };
 
   return (
-    <section className="pane history-pane">
+    <section className="pane history-pane" tabIndex={-1}>
       <div className="pane-toolbar">
         <span className="pane-title">{t('history.title')}</span>
         <span className="spacer" />

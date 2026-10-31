@@ -18,6 +18,8 @@ export interface LabelSession {
    * それ以降は括弧の内側だけを書き換える
    */
   insert?: { prefix: string; suffix: string };
+  /** 始めたときのカーソルの位置（vi の i は先頭、a は末尾）。clear は空にして始める（vi の cc / S）。省略時は全体を選ぶ */
+  caret?: 'start' | 'end' | 'clear';
 }
 
 interface Props {
@@ -32,7 +34,7 @@ interface Props {
 
 export function InlineLabelEditor({ session, anchor, container, renderTick, viewTick, onRangeChange, onClose }: Props) {
   const input = useRef<HTMLInputElement>(null);
-  const [value, setValue] = useState(session.original);
+  const [value, setValue] = useState(session.caret === 'clear' ? '' : session.original);
   const [invalid, setInvalid] = useState(false);
   const [rect, setRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const composing = useRef(false);
@@ -79,8 +81,14 @@ export function InlineLabelEditor({ session, anchor, container, renderTick, view
   );
 
   useEffect(() => {
-    input.current?.focus();
-    input.current?.select();
+    const el = input.current;
+    if (!el) return;
+    el.focus();
+    // 空にして始めるときは、空のラベルを反映しておく（構文が壊れる空のラベルは、打ち始めるまで保留になる）
+    if (session.caret === 'clear') void applier.current!.push('');
+    if (session.caret === 'start') el.setSelectionRange(0, 0);
+    else if (session.caret === 'end') el.setSelectionRange(el.value.length, el.value.length);
+    else el.select();
   }, []);
 
   useLayoutEffect(() => {

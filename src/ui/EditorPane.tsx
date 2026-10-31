@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Annotation, ChangeSet, Compartment, EditorSelection, EditorState, Text } from '@codemirror/state';
+import { Annotation, ChangeSet, Compartment, EditorSelection, EditorState, Text, type Extension } from '@codemirror/state';
 import {
   EditorView,
   drawSelection,
@@ -17,8 +17,12 @@ import { mermaidHighlighting, mermaidLanguage } from '../render/mermaidLanguage'
 import { mermaidCompletion } from '../render/completion';
 import { explainError } from '../render/errorHelp';
 import type { Sel } from '../core/history';
+import { VIM_GROUP_PREFIX } from '../core/coalesce';
+import { isVi, useKeymap } from './keymapStore';
+import { vimExtension } from './editorVim';
 
 // CodeMirror 標準の history() は使わない。undo はアプリの履歴ツリーが一元管理する（§8.1）。
+// vi のキーバインド（§16）では vim の拡張を入れ、vim の編集単位（挿入から Esc まで・1 つのコマンド）を履歴の 1 ステップにする（§8.3）。
 
 const External = Annotation.define<boolean>();
 
@@ -27,9 +31,28 @@ const toSel = (s: Sel) => EditorSelection.single(s.anchor, s.head);
 export function EditorPane() {
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const keysRef = useRef<{ compartment: Compartment; ext: () => Extension } | null>(null);
 
   useEffect(() => {
     const readOnly = new Compartment();
+    const keys = new Compartment();
+    // vim の編集単位。挿入モードを抜けたときと、ノーマルモードのコマンドが終わったときに次の単位にする。
+    // オペレーターから挿入に入る（ciw など）ときは、その削除と挿入を同じ単位にする
+    const vimSession = crypto.randomUUID().slice(0, 8);
+    let vimGroup = 0;
+    let vimInsert = false;
+    const vimExt = vimExtension({
+      onMode: (mode) => {
+        if (vimInsert && mode !== 'insert') vimGroup++;
+        vimInsert = mode === 'insert';
+      },
+      onCommandDone: () => {
+        if (!vimInsert) vimGroup++;
+      },
+    });
+    const keysExt = () => (isVi() ? vimExt : []);
+    keysRef.current = { compartment: keys, ext: keysExt };
+    const groupKey = () => (isVi() ? `${VIM_GROUP_PREFIX}${vimSession}:${vimGroup}` : undefined);
     // IME 変換中の変更はためておき、確定したらまとめて 1 つの変更として送る（§4.3）
     let pending: { changes: ChangeSet; docBefore: Text; selBefore: Sel } | null = null;
 
@@ -40,6 +63,7 @@ export function EditorPane() {
       const sel = view.state.selection.main;
       applyChanges(p.changes, {
         origin: 'typing',
+        groupKey: groupKey(),
         selBefore: p.selBefore,
         selAfter: { anchor: sel.anchor, head: sel.head },
         fromEditor: true,
@@ -62,6 +86,7 @@ export function EditorPane() {
         const isPaste = tr?.isUserEvent('input.paste') || tr?.isUserEvent('input.drop');
         applyChanges(u.changes, {
           origin: isPaste ? 'paste' : 'typing',
+          groupKey: isPaste ? undefined : groupKey(),
           selBefore,
           selAfter: { anchor: sel.anchor, head: sel.head },
           fromEditor: true,
@@ -83,6 +108,8 @@ export function EditorPane() {
         doc,
         selection: toSel({ anchor: Math.min(sel.anchor, doc.length), head: Math.min(sel.head, doc.length) }),
         extensions: [
+          // vim のキーは、ほかのキーの割り当てより先に読む
+          keys.of(keysExt()),
           lineNumbers(),
           highlightActiveLineGutter(),
           highlightActiveLine(),
@@ -127,7 +154,9 @@ export function EditorPane() {
           scrollIntoView: true,
         });
       } else if (e.type === 'select') {
-        view.dispatch({ selection: toSel(e.selection), annotations: External.of(true), scrollIntoView: e.scroll });
+        // vi では、図で選んだ要素の範囲をカーソルだけにする（範囲を選ぶと vim がビジュアルモードに入り、続けて打った d などで消えてしまう）
+        const sel = isVi() ? { anchor: e.selection.anchor, head: e.selection.anchor } : e.selection;
+        view.dispatch({ selection: toSel(sel), annotations: External.of(true), scrollIntoView: e.scroll });
       }
     });
 
@@ -137,6 +166,14 @@ export function EditorPane() {
       view.destroy();
     };
   }, []);
+
+  // キーバインドを切り替えたら、vim の拡張を出し入れする
+  const binding = useKeymap((s) => s.keymap);
+  useEffect(() => {
+    const view = viewRef.current;
+    const k = keysRef.current;
+    if (view && k) view.dispatch({ effects: k.compartment.reconfigure(k.ext()) });
+  }, [binding]);
 
   // 構文エラーをエディタに表示する
   const error = useRender((s) => s.error);
