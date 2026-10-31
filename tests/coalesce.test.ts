@@ -101,6 +101,26 @@ describe('shouldCoalesce', () => {
   });
 });
 
+describe('shouldCoalesce（vi の編集単位）', () => {
+  it('同じ編集単位の入力は、時間・カーソル・単語の切れ目・改行に関係なくまとめ、単位が変われば区切る（§8.3）', () => {
+    const tree = HistoryTree.create('d', '', 0);
+    const cs = ChangeSet.of({ from: 0, insert: 'abc' }, 0);
+    tree.commit(cs, doc(''), {
+      origin: 'typing',
+      label: '',
+      groupKey: 'vim:s:1',
+      selBefore: { anchor: 0, head: 0 },
+      selAfter: { anchor: 3, head: 3 },
+      ts: 1000,
+      coalesce: false,
+    });
+    const changes = ChangeSet.of({ from: 0, insert: ' \n' }, 3);
+    const base = { origin: 'typing' as const, changes, docBefore: doc('abc'), selBefore: { anchor: 0, head: 0 }, ts: 99_999 };
+    expect(shouldCoalesce(tree.head, { ...base, groupKey: 'vim:s:1' })).toBe(true);
+    expect(shouldCoalesce(tree.head, { ...base, groupKey: 'vim:s:2' })).toBe(false);
+  });
+});
+
 describe('describeTyping', () => {
   it('入力した文字列をラベルにする', () => {
     expect(describeTyping(ChangeSet.of({ from: 0, insert: 'A --> B' }, 0))).toBe('入力「A --> B」');

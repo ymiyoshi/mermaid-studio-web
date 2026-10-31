@@ -3,6 +3,7 @@ import type { Theme } from '../render/mermaid';
 import { FileMenu } from './FileMenu';
 import { TagEditor } from './TagEditor';
 import { togglePane, useLayout } from './layoutStore';
+import { setKeymap, useKeymap, type Keymap } from './keymapStore';
 import { getLang, setLang, t, type Lang } from '../i18n';
 
 const THEMES: Theme[] = ['default', 'neutral', 'forest', 'dark'];
@@ -21,6 +22,7 @@ export function Header() {
   const storage = useSession((s) => s.storage);
   const sidebarOpen = useLayout((s) => s.sidebarOpen);
   const historyOpen = useLayout((s) => s.historyOpen);
+  const keymap = useKeymap((s) => s.keymap);
   const canUndo = !!current && !current.readOnly && current.tree.canUndo();
   const canRedo = !!current && !current.readOnly && current.tree.canRedo();
 
@@ -90,6 +92,13 @@ export function Header() {
           <select value={getLang()} onChange={(e) => setLang(e.target.value as Lang)} aria-label={t('lang.label')}>
             <option value="ja">日本語</option>
             <option value="en">English</option>
+          </select>
+        </label>
+        <label className="theme-select">
+          <span>{t('keymap.label')}</span>
+          <select value={keymap} onChange={(e) => setKeymap(e.target.value as Keymap)} aria-label={t('keymap.label')}>
+            <option value="standard">{t('keymap.standard')}</option>
+            <option value="vi">{t('keymap.vi')}</option>
           </select>
         </label>
         <label className="theme-select">

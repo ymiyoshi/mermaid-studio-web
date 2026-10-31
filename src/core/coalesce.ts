@@ -21,6 +21,9 @@ export function editKind(changes: ChangeSet): EditKind {
   return count === 1 ? kind : 'replace';
 }
 
+/** vi のエディタの編集単位（挿入から Esc まで・ノーマルモードの 1 コマンド）の groupKey の接頭辞（§8.3） */
+export const VIM_GROUP_PREFIX = 'vim:';
+
 /** 入力の groupKey。まとめられない編集は null */
 export function typingGroupKey(changes: ChangeSet): string | null {
   const kind = editKind(changes);
@@ -41,6 +44,8 @@ export function shouldCoalesce(head: HistoryNode, next: NextEdit): boolean {
   if (next.groupKey === null || next.groupKey !== head.groupKey) return false;
   // ラベル編集などのセッションは、時間に関係なく 1 ステップにまとめる
   if (next.origin !== 'typing') return true;
+  // vi の編集単位は、時間・カーソル・単語の切れ目では区切らない（§8.3）
+  if (next.groupKey.startsWith(VIM_GROUP_PREFIX)) return true;
 
   if (next.ts - head.ts > TYPING_PAUSE_MS) return false;
   // カーソルが前回の入力位置から離れていたら区切る

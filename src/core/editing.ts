@@ -1,5 +1,5 @@
 import { ChangeSet, Text, type ChangeSpec } from '@codemirror/state';
-import type { Origin, Sel } from './history';
+import type { HistoryNode, Origin, Sel } from './history';
 import { describeTyping, shouldCoalesce, typingGroupKey } from './coalesce';
 import { validate } from '../render/mermaid';
 import * as store from '../storage/db';
@@ -36,7 +36,8 @@ export function applyChanges(changes: ChangeSet, meta: ApplyMeta): boolean {
   const docBefore = cur.text;
   const selBefore = meta.selBefore ?? get().selection;
   const selAfter = meta.selAfter ?? mapSel(selBefore, changes);
-  const groupKey = meta.origin === 'typing' ? typingGroupKey(changes) : (meta.groupKey ?? null);
+  // 入力の groupKey は変更の種類から決める。vi のエディタは編集単位の groupKey を渡す（§8.3）
+  const groupKey = meta.origin === 'typing' ? (meta.groupKey ?? typingGroupKey(changes)) : (meta.groupKey ?? null);
 
   const coalesce = shouldCoalesce(cur.tree.head, {
     origin: meta.origin,
@@ -115,6 +116,32 @@ export function redo() {
 export function jumpTo(nodeId: string) {
   const cur = editable();
   if (cur) moveHistory(cur.tree.jumpTo(nodeId, cur.text));
+}
+
+/** 履歴の版を、作った順（時刻の順）に並べる。分岐をまたいで前後へたどるのに使う（vim の g- / g+。§16） */
+function chronological(cur: { tree: { nodes: Map<string, HistoryNode> } }): HistoryNode[] {
+  return [...cur.tree.nodes.values()].sort((a, b) => a.ts - b.ts || a.depth - b.depth);
+}
+
+/** 作った順で n 個後ろ（負なら前）の版へ移る。端を越えたら端で止まる */
+export function travel(n: number) {
+  const cur = editable();
+  if (!cur || n === 0) return;
+  const list = chronological(cur);
+  const i = list.findIndex((x) => x.id === cur.tree.headId);
+  const j = Math.min(Math.max(i + n, 0), list.length - 1);
+  if (j !== i) moveHistory(cur.tree.jumpTo(list[j].id, cur.text));
+}
+
+/** 今の版の時刻から ms だけ後ろ（負なら前）の時点の版へ移る（:earlier 10m / :later 30s） */
+export function travelTime(ms: number) {
+  const cur = editable();
+  if (!cur || ms === 0) return;
+  const list = chronological(cur);
+  const at = cur.tree.head.ts + ms;
+  // その時点で最後に作られていた版。それより前に版が無ければ最初の版
+  const target = list.filter((x) => x.ts <= at).at(-1) ?? list[0];
+  if (target.id !== cur.tree.headId) moveHistory(cur.tree.jumpTo(target.id, cur.text));
 }
 
 export async function renameCurrent(title: string) {

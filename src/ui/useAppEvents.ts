@@ -21,7 +21,7 @@ export function useGlobalShortcuts() {
       if (k === 's') void saveFile({ saveAs: e.shiftKey });
       else if (k === 'o' && !e.shiftKey) void openFile();
       else if (k === 'e' && e.shiftKey) useIo.setState({ exportOpen: true });
-      else if ((k === 'k' && !e.shiftKey) || (k === 'p' && e.shiftKey)) useLayout.setState((s) => ({ paletteOpen: !s.paletteOpen }));
+      else if ((k === 'k' && !e.shiftKey) || (k === 'p' && e.shiftKey)) useLayout.setState((s) => ({ paletteOpen: !s.paletteOpen, paletteQuery: '' }));
       else return;
       e.preventDefault();
     };
@@ -88,7 +88,7 @@ export function useFileDrop(): boolean {
   return dragging;
 }
 
-const MOBILE_QUERY = '(max-width: 900px)';
+export const MOBILE_QUERY = '(max-width: 900px)';
 
 /** 狭い画面（タブで切り替える表示）かどうか */
 export function useMobile(): boolean {

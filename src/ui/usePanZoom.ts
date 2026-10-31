@@ -177,6 +177,17 @@ export function usePanZoom(viewport: RefObject<HTMLDivElement | null>, canvas: R
     if (dx || dy) setView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
   };
 
+  /** 表示を dx・dy（画面の座標）だけずらす（vi の zh / zl など。§16.4） */
+  const panBy = (dx: number, dy: number) => setView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
+
+  /** 要素を表示の中央に動かす（vi の zz） */
+  const center = (el: Element) => {
+    const vp = viewport.current;
+    if (!vp) return;
+    const r = rectIn(el, vp);
+    panBy(vp.clientWidth / 2 - (r.left + r.width / 2), vp.clientHeight / 2 - (r.top + r.height / 2));
+  };
+
   /** from: パンを始める位置（要素を動かすドラッグからパンに切り替えるとき、押した位置から動かすため） */
   const beginDrag = (e: React.PointerEvent, from: { x: number; y: number } = { x: e.clientX, y: e.clientY }) => {
     drag.current = { x: from.x, y: from.y, vx: view.x, vy: view.y, moved: false };
@@ -204,5 +215,5 @@ export function usePanZoom(viewport: RefObject<HTMLDivElement | null>, canvas: R
     return d && { moved: d.moved };
   };
 
-  return { view, fit, zoomBy, scrollIntoView, beginDrag, moveDrag, endDrag };
+  return { view, fit, zoomBy, scrollIntoView, panBy, center, beginDrag, moveDrag, endDrag };
 }
