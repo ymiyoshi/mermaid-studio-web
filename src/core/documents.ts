@@ -207,8 +207,8 @@ export function setTheme(theme: Theme) {
 // ---- 起動 ---------------------------------------------------------------
 
 /** 最後に開いていた図を開く。無ければ見本のフローチャートを作る */
-export async function openInitialDoc() {
-  const lastOpened = await store.getSetting<string>('lastOpened');
+export async function openInitialDoc(known?: { lastOpened: string | undefined }) {
+  const lastOpened = known ? known.lastOpened : await store.getSetting<string>('lastOpened');
   const alive = get().docs.filter((d) => d.deletedAt === null);
   const target = alive.find((d) => d.id === lastOpened) ?? alive[0];
   if (target) await openDoc(target.id);
@@ -220,18 +220,20 @@ export async function openInitialDoc() {
  * 前回の図や見本の図を開いてから、すぐ別の図に切り替えることになるため）
  */
 export async function init(opts: { skipInitialDoc?: Promise<boolean> } = {}) {
-  // 無制限の履歴を保つため、永続ストレージを要求する（§8.5）
-  await navigator.storage?.persist?.().catch(() => false);
+  // 無制限の履歴を保つため、永続ストレージを要求する（§8.5）。結果は使用量の表示より前に要るだけなので、読み込みと並べて待つ
+  const persisting = navigator.storage?.persist?.().catch(() => false);
   await store.purgeExpiredTrash();
 
-  const theme = (await store.getSetting<Theme>('theme')) ?? 'default';
-  const docs = await store.listDocs();
-  set({ docs, theme });
+  // 互いに関係しない読み込みは並べて行う（§18。ゴミ箱の掃除の後に一覧を読む順は変えない）
+  const [theme, docs, lastOpened] = await Promise.all([store.getSetting<Theme>('theme'), store.listDocs(), store.getSetting<string>('lastOpened')]);
+  set({ docs, theme: theme ?? 'default' });
 
-  if (!(await opts.skipInitialDoc)) await openInitialDoc();
+  if (!(await opts.skipInitialDoc)) await openInitialDoc({ lastOpened });
 
   onBroadcast(async (msg) => {
-    if (msg.type === 'docs-changed' || msg.type === 'saved') set({ docs: await store.listDocs() });
+    // 保存の知らせは書いた文書を載せているので、一覧を読み直さずに差し替える（打っている間は 1 秒に 1 回ほど届く。§18）
+    if (msg.type === 'saved' && msg.doc) set({ docs: upsertDoc(get().docs, msg.doc) });
+    else if (msg.type === 'docs-changed' || msg.type === 'saved') set({ docs: await store.listDocs() });
     if (msg.type === 'docs-changed') await leaveIfRemoved();
     const cur = get().current;
     if (msg.type === 'saved' && cur && cur.readOnly && msg.docId === cur.id) await reloadCurrent(cur.id, currentLock, true);
@@ -244,5 +246,6 @@ export async function init(opts: { skipInitialDoc?: Promise<boolean> } = {}) {
   });
 
   set({ ready: true });
-  void refreshStorageInfo();
+  // init の終わり（描画の開始）を、永続ストレージの返事で待たせない
+  void Promise.resolve(persisting).then(() => refreshStorageInfo());
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 import { Header } from './ui/Header';
 import { Sidebar } from './ui/Sidebar';
 import { EditorPane } from './ui/EditorPane';
@@ -8,14 +8,16 @@ import { useSession } from './core/session';
 import { ConflictBanner, IoDialogs } from './ui/IoDialogs';
 import { loadLayout, saveLayout, useLayout, type MobileTab } from './ui/layoutStore';
 import { useExternalChangeCheck, useFileDrop, useGlobalShortcuts, useMobile } from './ui/useAppEvents';
-import { CommandPalette } from './ui/CommandPalette';
-import { SnippetsDialog } from './ui/SnippetsDialog';
-import { PresentationView } from './ui/PresentationView';
-import { TimelapseHost } from './ui/TimelapseView';
-import { KeyHelp } from './ui/KeyHelp';
 import { loadKeymap, useKeymap } from './ui/keymapStore';
 import { useViKeys } from './ui/viDispatch';
 import { t } from './i18n';
+
+// 開いたときだけ使う画面は、起動時の読み込みから外す（§18。分けた部分もプリキャッシュするのでオフラインでも開ける）
+const CommandPalette = lazy(() => import('./ui/CommandPalette').then((m) => ({ default: m.CommandPalette })));
+const SnippetsDialog = lazy(() => import('./ui/SnippetsDialog').then((m) => ({ default: m.SnippetsDialog })));
+const PresentationView = lazy(() => import('./ui/PresentationView').then((m) => ({ default: m.PresentationView })));
+const TimelapseHost = lazy(() => import('./ui/TimelapseView').then((m) => ({ default: m.TimelapseHost })));
+const KeyHelp = lazy(() => import('./ui/KeyHelp').then((m) => ({ default: m.KeyHelp })));
 
 const MOBILE_TABS: { id: MobileTab; label: () => string }[] = [
   { id: 'list', label: () => t('doc.list') },
@@ -80,11 +82,13 @@ export function App() {
           ))}
         </nav>
         <IoDialogs />
-        {layout.paletteOpen && <CommandPalette onClose={() => useLayout.setState({ paletteOpen: false })} />}
-        {layout.snippetsOpen && <SnippetsDialog onClose={() => useLayout.setState({ snippetsOpen: false })} />}
-        {layout.presentOpen && <PresentationView onClose={closePresentation} />}
-        {layout.timelapseOpen && <TimelapseHost />}
-        {helpOpen && <KeyHelp onClose={() => useKeymap.setState({ helpOpen: false })} />}
+        <Suspense fallback={null}>
+          {layout.paletteOpen && <CommandPalette onClose={() => useLayout.setState({ paletteOpen: false })} />}
+          {layout.snippetsOpen && <SnippetsDialog onClose={() => useLayout.setState({ snippetsOpen: false })} />}
+          {layout.presentOpen && <PresentationView onClose={closePresentation} />}
+          {layout.timelapseOpen && <TimelapseHost />}
+          {helpOpen && <KeyHelp onClose={() => useKeymap.setState({ helpOpen: false })} />}
+        </Suspense>
         {toast && (
           <div className="toast" role="status" key={toast.id}>
             {toast.message}
@@ -123,11 +127,13 @@ export function App() {
         )}
       </main>
       <IoDialogs />
-      {layout.paletteOpen && <CommandPalette onClose={() => useLayout.setState({ paletteOpen: false })} />}
-      {layout.snippetsOpen && <SnippetsDialog onClose={() => useLayout.setState({ snippetsOpen: false })} />}
-      {layout.presentOpen && <PresentationView onClose={closePresentation} />}
-      {layout.timelapseOpen && <TimelapseHost />}
-      {helpOpen && <KeyHelp onClose={() => useKeymap.setState({ helpOpen: false })} />}
+      <Suspense fallback={null}>
+        {layout.paletteOpen && <CommandPalette onClose={() => useLayout.setState({ paletteOpen: false })} />}
+        {layout.snippetsOpen && <SnippetsDialog onClose={() => useLayout.setState({ snippetsOpen: false })} />}
+        {layout.presentOpen && <PresentationView onClose={closePresentation} />}
+        {layout.timelapseOpen && <TimelapseHost />}
+        {helpOpen && <KeyHelp onClose={() => useKeymap.setState({ helpOpen: false })} />}
+      </Suspense>
       {dragging && <div className="drop-overlay">{t('file.drop')}</div>}
       {toast && (
         <div className="toast" role="status" key={toast.id}>

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useRender } from '../render/pipeline';
 import { applyDiagramChange, redo, revealRange, showToast, undo, useSession } from '../core/session';
 import { pluginFor } from '../plugins/registry';
@@ -18,6 +19,7 @@ import { nearestInDirection, type Dir } from './viKeys';
 import { followLinks, linksOf } from '../plugins/structure';
 import { OutlinePanel, outlineRows } from './OutlinePanel';
 import { t } from '../i18n';
+import { labelEditPreview, patchLabelText } from './labelPreview';
 
 /** 再描画をまたいで同じ要素を指すためのキー。意味上の参照があればそれを使う */
 const keyOf = (x: DiagramTarget) => (x.ref ? `e:${refKey(x.ref)}` : x.id);
@@ -140,10 +142,26 @@ function toolbarPosition(r: Rect, vp: HTMLElement | null) {
 }
 
 export function DiagramPane() {
-  const { svg, svgSource, stale, status, error, diagramType } = useRender();
+  // 打鍵ごとに pipeline が status・stale を書き直すので、値が変わったときだけ描き直す（§18）
+  const { svg, svgSource, stale, status, error, diagramType } = useRender(
+    useShallow((s) => ({ svg: s.svg, svgSource: s.svgSource, stale: s.stale, status: s.status, error: s.error, diagramType: s.diagramType })),
+  );
   const readOnly = useSession((s) => s.current?.readOnly ?? true);
-  const selection = useSession((s) => s.selection);
-  const sourceText = useSession((s) => s.current?.text);
+  // テキストのカーソルがある行。描いた図のテキストと今のテキストが同じときだけ求める。打っている間（テキストが図より新しい間）は
+  // null のままなので、打鍵やカーソルの移動のたびにこの大きなコンポーネントを描き直さない（§18）
+  const sameAsSvg = useRef<{ text: unknown; svgSource: string; same: boolean } | null>(null);
+  const cursorLine = useSession((s) => {
+    const text = s.current?.text;
+    if (!text) return null;
+    let memo = sameAsSvg.current;
+    if (!memo || memo.text !== text || memo.svgSource !== svgSource) {
+      memo = { text, svgSource, same: text.length === svgSource.length && text.toString() === svgSource };
+      sameAsSvg.current = memo;
+    }
+    if (!memo.same) return null;
+    const line = text.lineAt(Math.min(s.selection.head, text.length));
+    return `${line.from}:${line.to}`;
+  });
 
   const viewport = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLDivElement>(null);
@@ -266,14 +284,50 @@ export function DiagramPane() {
     }
   }, [svg, svgSource, plugin]);
 
-  // テキストのカーソル位置に対応する要素を強調する。Text は変わらないオブジェクトなので、文字列にするのはテキストが変わったときだけ
-  const sourceString = useMemo(() => sourceText?.toString(), [sourceText]);
+  // ラベルの文字だけを変えた編集は、描き直しを待たずに、いま出ている図の文字を書き換えて見せる（設計書 §18.6）。
+  // 表示だけの先取りで、打鍵のたびに React で描き直さないよう、ストアを直に購読する。描き直しで SVG が差し替わったら targets が変わり、やり直す
+  useEffect(() => {
+    let active: { key: string; label: string; revert(): void } | null = null;
+    const clear = () => {
+      active?.revert();
+      active = null;
+      canvas.current?.classList.remove('previewed');
+    };
+    const run = () => {
+      const text = useSession.getState().current?.text;
+      const r = useRender.getState();
+      const hit = text && r.status !== 'error' && r.svgSource === svgSource ? labelEditPreview(targets, svgSource, text.toString()) : null;
+      if (!hit) return clear();
+      const key = keyOf(hit.target);
+      if (active?.key === key && active.label === hit.label) return;
+      clear();
+      const revert = patchLabelText(hit.target, hit.label);
+      if (!revert) return;
+      active = { key, label: hit.label, revert };
+      // 図はテキストと同じ中身を見せているので、「古い」の薄い表示にしない
+      canvas.current?.classList.add('previewed');
+    };
+    run();
+    const offText = useSession.subscribe((s, prev) => {
+      if (s.current?.text !== prev.current?.text) run();
+    });
+    const offRender = useRender.subscribe((s, prev) => {
+      if (s.status !== prev.status) run();
+    });
+    return () => {
+      offText();
+      offRender();
+      clear();
+    };
+  }, [targets, svgSource]);
+
+  // テキストのカーソル位置に対応する要素を強調する
   const cursorKey = useMemo(() => {
-    if (!sourceText || sourceString !== svgSource) return null;
-    const line = sourceText.lineAt(Math.min(selection.head, sourceText.length));
-    const hit = targets.find((x) => x.range && x.range.from >= line.from && x.range.from <= line.to);
+    if (cursorLine === null) return null;
+    const [from, to] = cursorLine.split(':').map(Number);
+    const hit = targets.find((x) => x.range && x.range.from >= from && x.range.from <= to);
     return hit ? keyOf(hit) : null;
-  }, [targets, selection, sourceText, sourceString, svgSource]);
+  }, [targets, cursorLine]);
 
   useEffect(() => {
     for (const x of targets) {
