@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { editorText, historyLabels, newFromTemplate, node, openApp, setEditorText } from './helpers';
+import { editorText, historyLabels, menu, newFromTemplate, node, openApp, openSettings, setEditorText } from './helpers';
 
 // 主な使い方を、本番ビルドで通して確かめる。
 
@@ -247,7 +247,7 @@ test('部品集: 選んだ範囲を登録し、再読み込みしてもカーソ
   await page.locator('.cm-line', { hasText: 'C --> E[終了]' }).click();
   await page.keyboard.press('Home');
   await page.keyboard.press('Shift+End');
-  await page.getByTitle('部品集（よく使う図の一部を登録・差し込み）').click();
+  await menu(page, '表示', '部品集…');
   const dialog = page.getByRole('dialog', { name: '部品集' });
   await dialog.getByLabel('部品の名前').fill('終了へ');
   await dialog.getByRole('button', { name: '選んだ範囲を登録' }).click();
@@ -259,7 +259,7 @@ test('部品集: 選んだ範囲を登録し、再読み込みしてもカーソ
   await expect(node(page, '開始')).toBeVisible();
   await page.locator('.cm-line', { hasText: 'A[開始]' }).click();
   await page.keyboard.press('End');
-  await page.getByTitle('部品集（よく使う図の一部を登録・差し込み）').click();
+  await menu(page, '表示', '部品集…');
   await dialog.getByRole('button', { name: '差し込む' }).click();
   await expect(dialog).toHaveCount(0);
   await expect.poll(() => editorText(page)).toContain('A[開始] --> B{条件を満たす?}\n    C --> E[終了]\n');
@@ -269,7 +269,7 @@ test('部品集: 選んだ範囲を登録し、再読み込みしてもカーソ
 test('発表モードで、図を全画面で順に見せる', async ({ page }) => {
   const errors = await openApp(page);
   await newFromTemplate(page, '円グラフ');
-  await page.getByTitle('発表モード（図を全画面で順に見せる）').click();
+  await menu(page, '表示', '発表モード…');
   const setup = page.getByRole('dialog', { name: '発表モード' });
   await setup.getByLabel('並び順').selectOption({ label: '名前順' });
   // 日本語の並び（カタカナが漢字より先）
@@ -331,7 +331,7 @@ test('宣言行で向きを打って Enter を押すと、補完ではなく改�
 
 test('履歴のペインを閉じていても、コマンドパレットからタイムラプスを開ける', async ({ page }) => {
   await openApp(page);
-  await page.getByTitle('履歴を表示・隠す').click();
+  await menu(page, '表示', '履歴');
   await expect(page.locator('.history-pane')).toHaveCount(0);
   await page.keyboard.press('ControlOrMeta+K');
   await page.getByRole('dialog', { name: 'コマンド' }).getByRole('combobox').fill('タイムラプス');
@@ -649,8 +649,7 @@ test('「共有リンクをコピー」したリンクを別の利用者が開�
   await openApp(page);
   await setEditorText(page, 'flowchart LR\n  K[共有された] --> L');
   await page.locator('.title-input').fill('E2E の共有');
-  await page.getByRole('button', { name: 'ファイル ▾' }).click();
-  await page.getByRole('menuitem', { name: '共有リンクをコピー' }).click();
+  await menu(page, 'ファイル', '共有リンクをコピー');
   await expect(page.locator('.toast')).toContainText('共有リンクをコピーしました');
   const link = await page.evaluate(() => navigator.clipboard.readText());
   expect(link).toMatch(/#v1\/[A-Za-z0-9_-]+$/);
@@ -811,6 +810,7 @@ test('タッチのピンチで図を拡大する', async ({ browser }) => {
 
 test('英語の UI に切り替えると、画面と図からの操作が英語になる', async ({ page }) => {
   const errors = await openApp(page);
+  await openSettings(page);
   await page.getByLabel('言語').selectOption('en');
   // 言語を変えると読み込み直す
   await expect(page.getByRole('button', { name: '＋ New' })).toBeVisible();
@@ -821,6 +821,7 @@ test('英語の UI に切り替えると、画面と図からの操作が英語�
   await page.keyboard.press('Escape');
   await expect.poll(() => editorText(page)).toContain('A --> N1[New node]');
   expect((await historyLabels(page)).at(-1)).toMatch(/^Add node N1/);
+  await openSettings(page, 'Settings');
   await page.getByLabel('Language').selectOption('ja');
   await expect(page.getByRole('button', { name: '＋ 新規' })).toBeVisible();
   expect(errors).toEqual([]);
