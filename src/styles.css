@@ -135,30 +135,66 @@ select {
 
 .header-actions {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 6px;
   margin-left: auto;
 }
 
-.theme-select {
+.menubar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  color: var(--muted);
-  font-size: 12px;
+  gap: 2px;
 }
 
-.theme-select select {
+.menubar-btn {
+  color: inherit;
+}
+
+.menubar-btn[aria-expanded='true'] {
+  background: var(--surface-2);
+}
+
+.menu-check {
+  display: inline-block;
+  width: 1.2em;
+}
+
+/* 設定の欄（言語・キー・テーマと保存領域） */
+.settings-menu {
+  min-width: 240px;
+  gap: 6px;
+  padding: 8px 10px;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.setting-row select {
   padding: 3px 6px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--surface);
 }
 
+.settings-btn {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.settings-warn {
+  color: var(--warn);
+  font-size: 13px;
+}
+
 .storage {
   color: var(--muted);
   font-size: 12px;
-  white-space: nowrap;
 }
 
 .storage.warn {
@@ -1018,8 +1054,6 @@ select:focus-visible {
 }
 
 /* ---- 狭い画面（タブで切り替え） ---- */
-.app.mobile .storage,
-.app.mobile .theme-select span,
 .app.mobile .pane-toggle,
 .app.mobile .tag-editor {
   display: none;
@@ -1503,20 +1537,7 @@ button.tag {
   font-size: 14px;
 }
 
-/* ヘッダーが窮屈なときは、補助的な表示から隠す */
-.header-actions {
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
-@media (max-width: 1400px) {
-  .theme-select span,
-  .storage {
-    display: none;
-  }
-}
-
-/* 狭い画面のヘッダー: アプリ名を隠して、元に戻す・やり直すを残す */
+/* 狭い画面のヘッダー: アプリ名を隠して、メニューと題名を残す */
 .app.mobile .brand span {
   display: none;
 }
@@ -1529,6 +1550,14 @@ button.tag {
 .app.mobile .title-input {
   flex: 1 1 auto;
   min-width: 60px;
+}
+
+/* 狭い画面では、メニューをボタンの下ではなく画面の左端から出す（右にはみ出さないように） */
+.app.mobile .menubar .menu {
+  position: fixed;
+  top: 52px;
+  left: 8px;
+  max-width: calc(100vw - 16px);
 }
 
 /* ---- 版を比べる（図で見る差分） ---- */

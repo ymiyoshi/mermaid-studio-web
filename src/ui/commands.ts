@@ -27,7 +27,8 @@ const THEMES: Theme[] = ['default', 'neutral', 'forest', 'dark'];
 export const DIAGRAM_COMMAND_EVENT = 'mmd-diagram-command';
 /** selectCursor: エディタのカーソルの行の要素を選ぶ（vi の gd） */
 export type DiagramCommand = 'fit' | 'zoomIn' | 'zoomOut' | 'togglePanel' | 'selectCursor';
-const diagram = (cmd: DiagramCommand) => () => dispatchEvent(new CustomEvent(DIAGRAM_COMMAND_EVENT, { detail: cmd }));
+export const runDiagramCommand = (cmd: DiagramCommand) => dispatchEvent(new CustomEvent(DIAGRAM_COMMAND_EVENT, { detail: cmd }));
+const diagram = (cmd: DiagramCommand) => () => runDiagramCommand(cmd);
 
 export function buildCommands(): Command[] {
   const s = useSession.getState();
@@ -38,10 +39,7 @@ export function buildCommands(): Command[] {
     for (const x of items) if (x) out.push({ ...x, group });
   };
 
-  g(t('cmd.groupEdit'), [
-    editable && { id: 'undo', title: t('toolbar.undo'), keys: 'Ctrl+Z', run: undo },
-    editable && { id: 'redo', title: t('toolbar.redo'), keys: 'Ctrl+Shift+Z', run: redo },
-  ]);
+  // 分け方と並びは、ヘッダーのメニュー（HeaderMenus.tsx）にそろえる
   g(t('cmd.groupFile'), [
     { id: 'open', title: t('menu.open'), keys: 'Ctrl+O', run: () => void openFile() },
     hasDoc && { id: 'save', title: t('menu.save'), keys: 'Ctrl+S', run: () => void saveFile() },
@@ -50,6 +48,10 @@ export function buildCommands(): Command[] {
     hasDoc && { id: 'share', title: t('menu.share'), run: () => void copyShareLink() },
     { id: 'backupExport', title: t('menu.backupExport'), run: () => void exportBackup() },
     { id: 'backupImport', title: t('menu.backupImport'), run: () => void importBackup() },
+  ]);
+  g(t('cmd.groupEdit'), [
+    editable && { id: 'undo', title: t('menu.undo'), keys: 'Ctrl+Z', run: undo },
+    editable && { id: 'redo', title: t('menu.redo'), keys: 'Ctrl+Shift+Z', run: redo },
   ]);
   g(t('cmd.groupView'), [
     { id: 'toggleList', title: t('layout.toggleList'), run: () => togglePane('sidebarOpen') },
@@ -61,11 +63,13 @@ export function buildCommands(): Command[] {
     { id: 'present', title: t('present.open'), run: () => useLayout.setState({ presentOpen: true }) },
     hasDoc && { id: 'snippets', title: t('snippet.open'), run: () => useLayout.setState({ snippetsOpen: true }) },
     hasDoc && { id: 'timelapse', title: t('timelapse.open'), run: () => useLayout.setState({ timelapseOpen: true }) },
+    { id: 'keyHelp', title: t('cmd.keyHelp'), keys: useKeymap.getState().keymap === 'vi' ? '?' : undefined, run: () => useKeymap.setState({ helpOpen: true }) },
+  ]);
+  g(t('cmd.groupSettings'), [
     { id: 'lang', title: t('cmd.switchLang'), run: () => setLang(getLang() === 'ja' ? 'en' : 'ja') },
     useKeymap.getState().keymap === 'vi'
       ? { id: 'keymap', title: t('cmd.keymapStandard'), run: () => setKeymap('standard') }
       : { id: 'keymap', title: t('cmd.keymapVi'), run: () => setKeymap('vi') },
-    { id: 'keyHelp', title: t('cmd.keyHelp'), keys: useKeymap.getState().keymap === 'vi' ? '?' : undefined, run: () => useKeymap.setState({ helpOpen: true }) },
     ...THEMES.map((th) => ({ id: `theme:${th}`, title: t('cmd.theme', { theme: th }), run: () => setTheme(th) })),
   ]);
   g(

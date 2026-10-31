@@ -1,12 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
-import { editorText, node, openApp, setEditorText } from './helpers';
+import { editorText, node, openApp, openSettings, setEditorText } from './helpers';
 
 // vi のキーバインド（設計書 §16）を、本番ビルドで通して確かめる。
 
 const selectedText = (page: Page) => page.locator('.diagram-canvas .mmd-selected').first();
 
 async function useVi(page: Page) {
+  await openSettings(page);
   await page.getByLabel('キー').selectOption('vi');
+  await page.keyboard.press('Escape');
 }
 
 test('図のペイン: 移動・追加・ラベル・削除・undo を vi のキーで行う', async ({ page }) => {
@@ -200,7 +202,9 @@ test(': で Ex コマンド、? でキーの一覧、標準に戻すと文字の
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
+  await openSettings(page);
   await page.getByLabel('キー').selectOption('standard');
+  await page.keyboard.press('Escape');
   await page.locator('.diagram-viewport').focus();
   await page.keyboard.press('?');
   await expect(page.getByRole('dialog')).toHaveCount(0);
