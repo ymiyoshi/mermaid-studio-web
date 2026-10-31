@@ -917,7 +917,66 @@ export const sequencePlugin: DiagramPlugin = {
       return me && to ? moveUnit(source, ref, me, to, before, t('seq.history.move', { kind: KIND_NAME[ref.kind] })) : null;
     },
   },
+
+  // 構造（設計書 §17.2）: 親はメッセージ・注釈・枠を囲む枠（loop・alt など。rect・box は数えない）、線はメッセージ
+  structure: {
+    parent(source, ref) {
+      const seq = parseSequence(source);
+      const line = statementLine(seq, ref);
+      const b = line && enclosingBlock(seq, line);
+      return b ? { kind: 'block', id: String(b.index) } : null;
+    },
+    children(source, ref) {
+      if (ref.kind !== 'block') return [];
+      const seq = parseSequence(source);
+      const b = seq.blocks[Number(ref.id)];
+      if (!b) return [];
+      const items = (['message', 'note', 'block'] as const).flatMap((kind) =>
+        itemsOf(seq, kind).flatMap((x, i) => (enclosingBlock(seq, x.line) === b ? [{ ref: { kind, id: String(i) }, at: x.line.index }] : [])),
+      );
+      return items.sort((a, c) => a.at - c.at).map((x) => x.ref);
+    },
+    links(source) {
+      return parseSequence(source).messages.map((m) => ({
+        edge: { kind: 'message', id: String(m.index) },
+        from: { kind: 'participant', id: m.from },
+        to: { kind: 'participant', id: m.to },
+      }));
+    },
+  },
+
+  // 複製（設計書 §17.3）: メッセージ・注釈・枠（中身ごと）の行を、すぐ後ろに写す
+  duplicate: {
+    accepts: (ref) => ref.kind === 'message' || ref.kind === 'note' || ref.kind === 'block',
+    run(source, refs) {
+      const seq = parseSequence(source);
+      const units = refs.flatMap((r) => {
+        const u = unitOf(seq, r);
+        return u ? [{ r, u }] : [];
+      });
+      // 枠の中の要素を枠と一緒に選んだときは、枠だけを写す
+      const top = units
+        .filter(({ u }) => !units.some((o) => o.u !== u && o.u.first.index < u.first.index && o.u.last.index >= u.last.index))
+        .sort((a, b) => a.u.first.index - b.u.first.index);
+      if (top.length === 0) return null;
+      const change = top.map(({ u }) => ({ from: u.last.to, insert: '\n' + source.slice(u.first.from, u.last.to) }));
+      // 写した最初の要素の番号: 同じ種類で、元の最後の行までにある数
+      const { r, u } = top[0];
+      const n = itemsOf(seq, r.kind).filter((x) => x.line.index <= u.last.index).length;
+      return { change, label: t('dup.history', { n: String(top.length) }), select: { kind: r.kind, id: String(n) } };
+    },
+  },
 };
+
+/** 行を囲む、一番内側の枠（loop・alt など） */
+function enclosingBlock(seq: Seq, line: SourceLine): Block | null {
+  let best: Block | null = null;
+  for (const b of seq.blocks) {
+    if (!isControl(b) || b.line.index >= line.index || (b.end && b.end.index <= line.index)) continue;
+    if (!best || b.line.index > best.line.index) best = b;
+  }
+  return best;
+}
 
 const STATEMENT_KINDS = ['message', 'note', 'block'];
 

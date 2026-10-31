@@ -1,4 +1,5 @@
 import type { DiagramPlugin, DiagramTarget, PropertyField, SourceRange } from './types';
+import { treeDuplicate, treeStructure } from './structure';
 import { withGeneric } from './generic';
 import { bodyLines, indentOf, type SourceLine } from './source';
 import { addChild, addSibling, deleteSubtree, movedIndex, moveSibling, outlineReorder, type OutlineNode } from './outline';
@@ -196,6 +197,16 @@ export const ishikawaPlugin: DiagramPlugin = {
     accepts: (r, target) => r.kind === 'cause' && target.kind === 'cause',
     allowed: (_n, target, place) => place === 'into' || target.level > 0,
     result: (_n, index) => ({ label: t('ik.history.move'), select: { kind: 'cause', id: String(index) } }),
+  }),
+
+  structure: treeStructure((source) => parseIshikawa(source).map((n) => ({ node: n, ref: ref(n) }))),
+
+  // 複製（設計書 §17.3）: 結果（頭）は 1 つなので、要因だけ
+  duplicate: treeDuplicate({
+    items: (source) => parseIshikawa(source).map((n) => ({ node: n, ref: ref(n) })),
+    accepts: (r) => r.kind === 'cause',
+    allowed: (n) => (n as IshikawaNode).level > 0,
+    copyRef: (index) => ({ kind: 'cause', id: String(index) }),
   }),
 };
 

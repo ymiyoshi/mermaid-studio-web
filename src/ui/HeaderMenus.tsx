@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { hasFileSystemAccess, openFile, saveFile } from '../io/files';
+import { hasDirectoryAccess, openFolder } from '../io/folders';
 import { exportBackup, importBackup } from '../io/backup';
 import { useIo } from '../io/ioStore';
 import { copyShareLink } from '../io/shareActions';
@@ -130,6 +131,7 @@ export function HeaderMenus() {
         {(close) => (
           <>
             <Item close={close} label={t('menu.open')} run={() => void openFile()} shortcut={`${mod}O`} />
+            {hasDirectoryAccess() && <Item close={close} label={t('menu.openFolder')} run={() => void openFolder()} />}
             <Item close={close} label={t('menu.save')} run={() => void saveFile()} shortcut={`${mod}S`} disabled={!hasDoc} />
             <Item close={close} label={t('menu.saveAs')} run={() => void saveFile({ saveAs: true })} shortcut={`${mod}Shift+S`} disabled={!hasDoc} />
             {!hasFileSystemAccess() && <div className="menu-note">{t('menu.downloadNote')}</div>}
@@ -164,6 +166,7 @@ export function HeaderMenus() {
             <Item close={close} label={t('toolbar.zoomIn')} run={() => runDiagramCommand('zoomIn')} disabled={!hasDoc} />
             <Item close={close} label={t('toolbar.zoomOut')} run={() => runDiagramCommand('zoomOut')} disabled={!hasDoc} />
             <Item close={close} label={t('cmd.togglePanel')} run={() => runDiagramCommand('togglePanel')} disabled={!hasDoc} />
+            <Item close={close} label={t('cmd.toggleOutline')} run={() => runDiagramCommand('toggleOutline')} disabled={!hasDoc} />
             <div className="menu-sep" />
             <Item close={close} label={t('menu.present')} run={() => useLayout.setState({ presentOpen: true })} />
             <Item close={close} label={t('menu.snippets')} run={() => useLayout.setState({ snippetsOpen: true })} disabled={!hasDoc} />

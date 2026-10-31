@@ -1,4 +1,5 @@
 import type { ChangeSpec } from '@codemirror/state';
+import { linkStructure } from './structure';
 import type { DiagramPlugin, DiagramTarget, PropertyField } from './types';
 import { labelText, withGeneric } from './generic';
 import { bodyLines, insertLineAfter, rangeInInserted, tokenRegex, uniqueId, type SourceLine } from './source';
@@ -237,4 +238,9 @@ export const erPlugin: DiagramPlugin = {
       },
     },
   ],
+
+  // 構造（設計書 §17.2）: 線はリレーション
+  structure: linkStructure((source) =>
+    parseRelationships(source).map((x) => ({ edge: { kind: 'relationship', id: String(x.index) }, from: { kind: 'entity', id: x.a }, to: { kind: 'entity', id: x.b } })),
+  ),
 };

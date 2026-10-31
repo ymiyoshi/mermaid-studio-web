@@ -6,6 +6,7 @@ import { startRenderPipeline } from './render/pipeline';
 import { importFromLocationHash, watchShareLinks } from './io/shareActions';
 import { startThumbnails } from './render/thumbs';
 import { watchLaunchFiles } from './io/files';
+import { loadFolders } from './io/folders';
 import { preloadMermaid } from './render/mermaid';
 import { getLang } from './i18n';
 import './styles.css';
@@ -30,6 +31,8 @@ const launched = watchLaunchFiles(ready);
 void init({ skipInitialDoc: launched }).then(async () => {
   startRenderPipeline();
   void startThumbnails();
+  // 前に開いたフォルダを一覧に出す（§17.9）。失敗しても起動は止めない
+  void loadFolders().catch(() => {});
   // 共有リンクの読み込みが失敗しても、渡されたファイルは開く
   markReady();
   await importFromLocationHash();

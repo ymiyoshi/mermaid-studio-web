@@ -1,8 +1,9 @@
 import { renderSvg } from '../render/mermaid';
 import { prepareSvg } from './exportImage';
 import { t } from '../i18n';
+import { ColorCounter, GifWriter } from './gif';
 
-// タイムラプスを WebM 動画にする。各版を描き直して canvas に描き、MediaRecorder で録る（外部のライブラリも通信も使わない）。
+// タイムラプスを WebM 動画・GIF にする。各版を描き直して canvas に描き、MediaRecorder で録る（外部のライブラリも通信も使わない）。
 // 録画は実時間で進むので、版の数 × 1 枚の時間だけかかる。
 
 export interface VideoFrame {
@@ -33,26 +34,88 @@ async function loadImage(svg: string): Promise<HTMLImageElement | null> {
   }
 }
 
-/** 1 枚分を描く。描けない版（構文エラーの途中など）は、直前の図のまま説明だけ変える */
+/** 1 枚分を描く。描けない版（構文エラーの途中など）は、直前の図のまま説明だけ変える。大きさは canvas に合わせる（GIF は小さく描く） */
 function draw(ctx: CanvasRenderingContext2D, img: HTMLImageElement | null, caption: string, index: number, total: number) {
+  const W = ctx.canvas.width;
+  const H = ctx.canvas.height;
+  const k0 = W / WIDTH;
+  const capH = CAPTION_H * k0;
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  ctx.fillRect(0, 0, W, H);
   if (img) {
-    const areaH = HEIGHT - CAPTION_H - 24;
-    const k = Math.min((WIDTH - 48) / img.naturalWidth, areaH / img.naturalHeight, 3);
+    const areaH = H - capH - 24 * k0;
+    const k = Math.min((W - 48 * k0) / img.naturalWidth, areaH / img.naturalHeight, 3 * k0);
     const w = img.naturalWidth * k;
     const h = img.naturalHeight * k;
-    ctx.drawImage(img, (WIDTH - w) / 2, 12 + (areaH - h) / 2, w, h);
+    ctx.drawImage(img, (W - w) / 2, 12 * k0 + (areaH - h) / 2, w, h);
   }
   ctx.fillStyle = '#f2f3f5';
-  ctx.fillRect(0, HEIGHT - CAPTION_H, WIDTH, CAPTION_H);
+  ctx.fillRect(0, H - capH, W, capH);
   ctx.fillStyle = '#1d232c';
-  ctx.font = '20px "BIZ UDGothic", "Yu Gothic", sans-serif';
+  ctx.font = `${Math.round(20 * k0)}px "BIZ UDGothic", "Yu Gothic", sans-serif`;
   ctx.textBaseline = 'middle';
-  ctx.fillText(caption.slice(0, 60), 20, HEIGHT - CAPTION_H / 2);
+  ctx.fillText(caption.slice(0, 60), 20 * k0, H - capH / 2);
   ctx.textAlign = 'right';
-  ctx.fillText(`${index + 1} / ${total}`, WIDTH - 20, HEIGHT - CAPTION_H / 2);
+  ctx.fillText(`${index + 1} / ${total}`, W - 20 * k0, H - capH / 2);
   ctx.textAlign = 'left';
+}
+
+/** 各版を描き直して画像にする（描けない版は直前の画像を使う）。止めたら null */
+async function renderFrames(frames: VideoFrame[], signal?: AbortSignal): Promise<(HTMLImageElement | null)[] | null> {
+  const images: (HTMLImageElement | null)[] = [];
+  let last: HTMLImageElement | null = null;
+  for (const f of frames) {
+    if (signal?.aborted) return null;
+    const r = f.text.trim() === '' ? null : await renderSvg(f.text, { htmlLabels: false });
+    const img = r?.ok ? await loadImage(prepareSvg(r.svg, 'white', true).svg) : null;
+    last = img ?? last;
+    images.push(last);
+  }
+  return images;
+}
+
+const GIF_WIDTH = 800;
+const GIF_HEIGHT = 450;
+
+/**
+ * 版を順に描いて GIF にする（設計書 §17.8）。録画と違って実時間を待たない。
+ * onProgress には描き終えた枚数を渡す。signal で止められる（止めたら null）
+ */
+export async function recordGif(
+  frames: VideoFrame[],
+  opts: { frameMs: number; onProgress?(done: number): void; signal?: AbortSignal },
+): Promise<Blob | null> {
+  const images = await renderFrames(frames, opts.signal);
+  if (!images) return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = GIF_WIDTH;
+  canvas.height = GIF_HEIGHT;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+  const pixels = (i: number) => {
+    draw(ctx, images[i], frames[i].caption, i, frames.length);
+    return ctx.getImageData(0, 0, GIF_WIDTH, GIF_HEIGHT).data;
+  };
+  // 1 回目: 色を数える。2 回目: 描き直して 1 枚ずつ圧縮する（全フレームの画素を持たない。150 枚で 200MB を超えるため）。
+  // 1 枚ごとに手を離して、画面を固めず、止めるボタンを効かせる
+  const counter = new ColorCounter();
+  for (let i = 0; i < frames.length; i++) {
+    if (opts.signal?.aborted) return null;
+    counter.add(pixels(i));
+    if (i % 10 === 9) await sleep(0);
+  }
+  const { palette, lookup } = counter.palette();
+  const writer = new GifWriter(GIF_WIDTH, GIF_HEIGHT, palette, lookup);
+  for (let i = 0; i < frames.length; i++) {
+    if (opts.signal?.aborted) return null;
+    // 最後の 1 枚は長めに見せる
+    const ms = i === frames.length - 1 ? Math.max(opts.frameMs * 3, 1000) : opts.frameMs;
+    writer.addFrame(pixels(i), ms / 10);
+    opts.onProgress?.(i + 1);
+    await sleep(0);
+  }
+  if (opts.signal?.aborted) return null;
+  const bytes = writer.finish();
+  return new Blob([bytes as BlobPart], { type: 'image/gif' });
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -65,15 +128,8 @@ export async function recordTimelapse(
   opts: { frameMs: number; onProgress?(done: number): void; signal?: AbortSignal },
 ): Promise<Blob | null> {
   // 先に全部描き直しておく（録画中に待たないため）
-  const images: (HTMLImageElement | null)[] = [];
-  let last: HTMLImageElement | null = null;
-  for (const f of frames) {
-    if (opts.signal?.aborted) return null;
-    const r = f.text.trim() === '' ? null : await renderSvg(f.text, { htmlLabels: false });
-    const img = r?.ok ? await loadImage(prepareSvg(r.svg, 'white', true).svg) : null;
-    last = img ?? last;
-    images.push(last);
-  }
+  const images = await renderFrames(frames, opts.signal);
+  if (!images) return null;
 
   const canvas = document.createElement('canvas');
   canvas.width = WIDTH;

@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { useSession } from '../core/session';
-import { configureMermaid, renderSvg, validate, type ParseError } from './mermaid';
+import { configureMermaid, peekValidated, renderSvg, type ParseError } from './mermaid';
+import { bodyLines } from '../plugins/source';
 
-// 設計書 §4.3: テキストが変わるたびに検証し、描画は少し待ってから行う。
+// 設計書 §4.3・§17.1: テキストが変わるたびに描き直す（描画の中で構文も確かめる）。続けて打っている間は、描き終えてから少し待って最新を描く。
 // 構文エラーの間は、最後に正常だった描画を残して「古い」印を付ける。
 
 export interface RenderState {
@@ -26,30 +27,78 @@ export const useRender = create<RenderState>(() => ({
   stale: false,
 }));
 
-const RENDER_DEBOUNCE_MS = 150;
+/**
+ * 描き終えてから次に描き始めるまでの最小の間隔（設計書 §17.1）。
+ * 間が空いた後の入力はすぐ描き、続けて打っている間は「描き終えてからこの間隔の後に、最新のテキストを描く」。
+ * 描画（mermaid.render）は中で構文解析もするので、描く前に別に検証しない（200 ノードで parse が 80ms ほどかかり、2 回読むことになる）
+ */
+const RENDER_GAP_MS = 150;
 let seq = 0;
 let timer: ReturnType<typeof setTimeout> | null = null;
+/** 描いている途中か */
+let rendering = false;
+/** 最後に描き終えた時刻 */
+let lastEnd = -Infinity;
+/** 描きたい最新のテキスト（描いている間に変わったら、描き終えてから描く） */
+let wanted: string | null = null;
 
-async function update(text: string) {
-  const mySeq = ++seq;
-  if (timer) clearTimeout(timer);
+async function renderLatest() {
+  timer = null;
+  if (rendering || wanted === null) return;
+  const text = wanted;
+  const mySeq = seq;
+  wanted = null;
+  rendering = true;
+  let r: Awaited<ReturnType<typeof renderSvg>>;
+  try {
+    r = await renderSvg(text);
+  } finally {
+    rendering = false;
+    lastEnd = performance.now();
+  }
+  // 描いている間にテキストが変わっていれば、この結果は捨てて最新を描く
+  if (mySeq === seq) {
+    if (r.ok) useRender.setState({ status: 'ok', svg: r.svg, svgSource: text, diagramType: r.diagramType, stale: false, error: null });
+    else useRender.setState({ status: 'error', error: r.error, stale: useRender.getState().svg !== null });
+  }
+  schedule();
+}
+
+function schedule() {
+  if (rendering || wanted === null || timer) return;
+  const wait = lastEnd + RENDER_GAP_MS - performance.now();
+  if (wait <= 0) void renderLatest();
+  else timer = setTimeout(() => void renderLatest(), wait);
+}
+
+function update(text: string) {
+  ++seq;
   if (text.trim() === '') {
+    if (timer) clearTimeout(timer);
+    timer = null;
+    wanted = null;
     useRender.setState({ status: 'empty', error: null, diagramType: null, svg: null, svgSource: '', stale: false });
     return;
   }
-  const v = await validate(text);
-  if (mySeq !== seq) return;
-  if (!v.ok) {
-    useRender.setState({ status: 'error', error: v.error, stale: useRender.getState().svg !== null });
+  // 図からの操作で検証済みのテキストなら、描く前に図種が分かる（描き終えるまで、パネルの操作を図種に合わせて出せる）
+  const known = peekValidated(text);
+  if (known && !known.ok) {
+    wanted = null;
+    useRender.setState({ status: 'error', error: known.error, stale: useRender.getState().svg !== null });
     return;
   }
-  useRender.setState({ status: 'pending', error: null, diagramType: v.diagramType, stale: true });
-  timer = setTimeout(async () => {
-    const r = await renderSvg(text);
-    if (mySeq !== seq) return;
-    if (r.ok) useRender.setState({ status: 'ok', svg: r.svg, svgSource: text, stale: false, error: null });
-    else useRender.setState({ status: 'error', error: r.error, stale: useRender.getState().svg !== null });
-  }, RENDER_DEBOUNCE_MS);
+  // 検証していないテキストでは、描き終えるまで前の図種のままにする。ただし宣言の語（flowchart・sequenceDiagram など）が
+  // 変わったときは、前の図種の操作を新しいテキストに当てないよう、図種を分からないことにする（§17.1）
+  const declOf = (s: string) => /^\S*/.exec(bodyLines(s).header?.text.trim() ?? '')![0];
+  const typeChanged = !known?.ok && declOf(text) !== declOf(useRender.getState().svgSource);
+  useRender.setState({
+    status: 'pending',
+    error: null,
+    ...(known?.ok ? { diagramType: known.diagramType } : typeChanged ? { diagramType: null } : {}),
+    stale: true,
+  });
+  wanted = text;
+  schedule();
 }
 
 export function startRenderPipeline() {
@@ -68,7 +117,7 @@ export function startRenderPipeline() {
     }
     lastText = s.current.text;
     lastTheme = s.theme;
-    void update(s.current.text.toString());
+    update(s.current.text.toString());
   };
   run();
   return useSession.subscribe(run);

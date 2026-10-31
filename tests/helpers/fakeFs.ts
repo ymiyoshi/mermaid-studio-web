@@ -68,3 +68,33 @@ export function captureDownloads() {
   };
   return downloads;
 }
+
+/** テスト用のフォルダ（設計書 §17.9）。中身は FakeHandle とフォルダ */
+export class FakeDirHandle {
+  readonly kind = 'directory';
+  permission: PermissionState = 'granted';
+  constructor(
+    public name: string,
+    public entries: (FakeHandle | FakeDirHandle)[] = [],
+  ) {}
+  async *values() {
+    for (const e of this.entries) yield e;
+  }
+  async queryPermission() {
+    return this.permission;
+  }
+  async requestPermission() {
+    this.permission = 'granted';
+    return this.permission;
+  }
+  async isSameEntry(other: unknown) {
+    return other === this;
+  }
+}
+
+/** window.showDirectoryPicker を差し替える。null を渡すと API が無いブラウザにする */
+export function installDirectoryPicker(dir: FakeDirHandle | null) {
+  const w = window as unknown as Record<string, unknown>;
+  if (dir === null) delete w.showDirectoryPicker;
+  else w.showDirectoryPicker = async () => dir;
+}

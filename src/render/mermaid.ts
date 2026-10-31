@@ -112,6 +112,11 @@ export function toParseError(e: unknown, text: string): ParseError {
 /** 直前に検証したテキストと結果（図からの操作で検証したテキストを、描画の前にもう一度読まないため） */
 let lastValidated: { text: string; result: ValidateResult } | null = null;
 
+/** 検証済みのテキストなら、その結果（読み込みも検証もしない） */
+export function peekValidated(text: string): ValidateResult | null {
+  return lastValidated?.text === text ? lastValidated.result : null;
+}
+
 export async function validate(text: string): Promise<ValidateResult> {
   if (text.trim() === '') return { ok: true, diagramType: null };
   if (lastValidated?.text === text) return lastValidated.result;
@@ -137,7 +142,7 @@ export async function validate(text: string): Promise<ValidateResult> {
 let queue: Promise<unknown> = Promise.resolve();
 let renderSeq = 0;
 
-export type RenderResult = { ok: true; svg: string } | { ok: false; error: ParseError };
+export type RenderResult = { ok: true; svg: string; diagramType: string } | { ok: false; error: ParseError };
 
 export interface RenderOptions {
   /**
@@ -161,8 +166,10 @@ export function renderSvg(text: string, opts: RenderOptions = {}): Promise<Rende
     const override = opts.htmlLabels === false && theme !== null;
     if (override) mermaid.initialize(baseConfig(theme, false));
     try {
-      const { svg } = await mermaid.render(id, text);
-      return { ok: true, svg };
+      const { svg, diagramType } = await mermaid.render(id, text);
+      // 描けたテキストは構文も正しいので、検証の結果として覚える（図からの操作の検証で読み直さないため）
+      lastValidated = { text, result: { ok: true, diagramType } };
+      return { ok: true, svg, diagramType };
     } catch (e) {
       return { ok: false, error: toParseError(e, text) };
     } finally {

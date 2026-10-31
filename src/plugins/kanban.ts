@@ -1,6 +1,7 @@
 import type { DiagramPlugin, DiagramTarget, PropertyField, SourceRange } from './types';
+import { treeDuplicate, treeStructure } from './structure';
 import { labelText, withGeneric } from './generic';
-import { bodyLines, indentOf, insertLineAfter, uniqueId } from './source';
+import { bodyLines, indentOf, insertLineAfter, tokenRegex, uniqueId } from './source';
 import { addChild, deleteSubtree, moveSibling, outlineReorder, parseOutline, type OutlineNode } from './outline';
 import { t } from '../i18n';
 
@@ -141,5 +142,26 @@ export const kanbanPlugin: DiagramPlugin = {
     accepts: (ref, target) => ref.kind === target.kind,
     allowed: (n, target, place) => (place === 'into' ? n.item.kind === 'card' && target.item.kind === 'column' : n.item.kind === target.item.kind),
     result: (n) => ({ label: t('kb.history.drag', { id: n.item.id }), select: { kind: n.item.kind, id: n.item.id } }),
+  }),
+
+  structure: treeStructure((source) => kanbanItems(source).map((x) => ({ node: x.node, ref: { kind: x.kind, id: x.id } }))),
+
+  // 複製（設計書 §17.3）: 列はカードごと写し、列・カードの ID は振り直す
+  duplicate: treeDuplicate({
+    items: (source) => kanbanItems(source).map((x) => ({ node: x.node, ref: { kind: x.kind, id: x.id } })),
+    accepts: (ref) => ref.kind === 'column' || ref.kind === 'card',
+    renameLine(text, taken, source) {
+      return text.replace(/^(\s*)([\p{L}\p{N}_-]+)(?=\[)/u, (_, indent: string, id: string) => {
+        const stem = id.replace(/\d+$/, '') || id;
+        for (let k = 1; ; k++) {
+          const next = `${stem}${k}`;
+          if (!taken.has(next) && !tokenRegex(next).test(source)) {
+            taken.add(next);
+            return indent + next;
+          }
+        }
+      });
+    },
+    copyRef: (_index, text, original) => ({ kind: original.kind, id: /^\s*([\p{L}\p{N}_-]+)\[/u.exec(text)?.[1] ?? original.id }),
   }),
 };

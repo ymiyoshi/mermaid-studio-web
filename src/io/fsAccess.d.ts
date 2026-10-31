@@ -36,8 +36,18 @@ interface LaunchQueue {
   setConsumer(consumer: (params: LaunchParams) => void): void;
 }
 
+interface DirectoryPickerOptions {
+  id?: string;
+  mode?: 'read' | 'readwrite';
+}
+
+interface FileSystemDirectoryHandle {
+  values(): AsyncIterableIterator<FileSystemFileHandle | FileSystemDirectoryHandle>;
+}
+
 interface Window {
   launchQueue?: LaunchQueue;
+  showDirectoryPicker?(options?: DirectoryPickerOptions): Promise<FileSystemDirectoryHandle>;
   showOpenFilePicker?(options?: OpenFilePickerOptions): Promise<FileSystemFileHandle[]>;
   showSaveFilePicker?(options?: SaveFilePickerOptions): Promise<FileSystemFileHandle>;
 }

@@ -1,4 +1,5 @@
 import type { ChangeSpec } from '@codemirror/state';
+import { linkStructure } from './structure';
 import type { DiagramPlugin, DiagramTarget, PropertyField, SourceRange } from './types';
 import { labelText, withGeneric } from './generic';
 import { bodyLines, indentOf, insertLineAfter, rangeInInserted, uniqueId, type SourceLine } from './source';
@@ -214,4 +215,11 @@ export const statePlugin: DiagramPlugin = {
       },
     },
   ],
+
+  // 構造（設計書 §17.2）: 線は遷移。開始・終了（[*]）は図の上で選べないので端にしない
+  structure: linkStructure((source) =>
+    parseTransitions(source)
+      .filter((x) => x.a !== '[*]' && x.b !== '[*]')
+      .map((x) => ({ edge: { kind: 'transition', id: String(x.index) }, from: { kind: 'state', id: x.a }, to: { kind: 'state', id: x.b } })),
+  ),
 };

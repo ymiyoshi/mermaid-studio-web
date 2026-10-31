@@ -16,6 +16,10 @@ import { useRender } from '../render/pipeline';
 import { mermaidHighlighting, mermaidLanguage } from '../render/mermaidLanguage';
 import { mermaidCompletion } from '../render/completion';
 import { explainError } from '../render/errorHelp';
+import { lintDiagram } from '../render/lint';
+import { validate } from '../render/mermaid';
+import { applySpec } from '../plugins/source';
+import { t } from '../i18n';
 import type { Sel } from '../core/history';
 import { VIM_GROUP_PREFIX } from '../core/coalesce';
 import { isVi, useKeymap } from './keymapStore';
@@ -25,6 +29,10 @@ import { vimExtension } from './editorVim';
 // vi のキーバインド（§16）では vim の拡張を入れ、vim の編集単位（挿入から Esc まで・1 つのコマンド）を履歴の 1 ステップにする（§8.3）。
 
 const External = Annotation.define<boolean>();
+
+/** 警告（§17.5）を出すまでの、入力が止まっている時間と、直し方の案を確かめる数の上限 */
+const LINT_DELAY_MS = 400;
+const LINT_FIX_CHECKS = 8;
 
 const toSel = (s: Sel) => EditorSelection.single(s.anchor, s.head);
 
@@ -175,8 +183,11 @@ export function EditorPane() {
     if (view && k) view.dispatch({ effects: k.compartment.reconfigure(k.ext()) });
   }, [binding]);
 
-  // 構文エラーをエディタに表示する
+  // 構文エラーをエディタに表示する。エラーが無く描けたときは、怪しいところの警告（§17.5）を出す
   const error = useRender((s) => s.error);
+  const status = useRender((s) => s.status);
+  const svgSource = useRender((s) => s.svgSource);
+  const diagramType = useRender((s) => s.diagramType);
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
@@ -187,9 +198,65 @@ export function EditorPane() {
       const help = explainError(doc.toString(), error);
       const line = doc.line(Math.min(Math.max(help.line ?? error.line ?? 1, 1), doc.lines));
       diags.push({ from: line.from, to: line.to, severity: 'error', message: `${help.summary}\n\n${error.message}` });
+      view.dispatch(setDiagnostics(view.state, diags));
+      return;
     }
-    view.dispatch(setDiagnostics(view.state, diags));
-  }, [error]);
+    if (status !== 'ok' || view.state.doc.toString() !== svgSource) {
+      // 描き直しを待つ間も消す（警告の直し方の案は、警告を出したときのテキストの位置で書き換えるため、編集の後に押すと別の所を壊す）
+      view.dispatch(setDiagnostics(view.state, []));
+      return;
+    }
+    // 警告は、入力が止まってから出す（直し方の案を確かめる mermaid.parse は、大きな図では 1 回 80ms ほどかかる。§17.5）
+    let cancelled = false;
+    const source = svgSource;
+    const timer = setTimeout(async () => {
+      try {
+        await showWarnings();
+      } catch {
+        // 警告は補助なので、読み取りに失敗しても何も出さないだけにする
+      }
+    }, LINT_DELAY_MS);
+    const showWarnings = async () => {
+      const warnings = lintDiagram(source, diagramType);
+      // 直し方の案は、mermaid.parse を通るものだけ出す。確かめるのは 1 つずつ、上限まで（それより後ろの警告は案なしで出す）
+      let budget = LINT_FIX_CHECKS;
+      const checked = [];
+      for (const w of warnings) {
+        const fixes = [];
+        for (const f of w.fixes) {
+          if (budget <= 0 || cancelled) break;
+          budget--;
+          if ((await validate(applySpec(source, f.spec))).ok) fixes.push(f);
+        }
+        checked.push({ ...w, fixes });
+      }
+      const v = viewRef.current;
+      if (cancelled || !v || v.state.doc.toString() !== source) return;
+      v.dispatch(
+        setDiagnostics(
+          v.state,
+          checked.map((w) => ({
+            from: w.from,
+            to: w.to,
+            severity: w.severity,
+            source: t('lint.source'),
+            message: w.message,
+            actions: w.fixes.map((f) => ({
+              name: f.label,
+              // 案の位置は source のもの。テキストが変わっていたら書き換えない（変わると警告は消えるが、念のため）
+              apply: (ev: EditorView) => {
+                if (ev.state.doc.toString() === source) ev.dispatch({ changes: f.spec });
+              },
+            })),
+          })),
+        ),
+      );
+    };
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [error, status, svgSource, diagramType]);
 
   return <div className="editor" ref={host} />;
 }

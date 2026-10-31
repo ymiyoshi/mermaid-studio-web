@@ -37,6 +37,7 @@ import { classNames, classOf, frontmatterTitle, linkStyleProp, setClass, setFron
 import { addHitArea, edgeLabels, idFromSvg, matchInOrder } from './svg';
 import { topLevelEnd } from './lineOps';
 import { regexParser, type TableDef } from './table';
+import { flowDuplicate, flowStructure } from './flowchartStructure';
 import { t } from '../i18n';
 
 // flowchart / graph のプラグイン（設計書 §7.3 Phase 1）。
@@ -533,6 +534,9 @@ export const flowPlugin = (v: FlowVariant): DiagramPlugin => ({
       return { change, label, select: ref };
     },
   },
+
+  structure: flowStructure,
+  duplicate: flowDuplicate,
 });
 
 const parseFlowchartOnce = lastParse(parseFlowchart);

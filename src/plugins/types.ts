@@ -102,6 +102,37 @@ export interface DiagramPlugin {
   tables?: TableDef[];
   /** ドラッグでの移動（設計書 §6.3: 座標は保存せず、並び順・所属の変更として扱う） */
   reorder?: ReorderSpec;
+  /** 要素の親子と、線でのつながり（設計書 §17.2。vi の ]e・]g・>>、アウトライン、読み上げに使う） */
+  structure?: StructureSpec;
+  /** 要素の複製（設計書 §17.3。コピーと貼り付け・vi の p） */
+  duplicate?: DuplicateSpec;
+}
+
+/** 線（エッジ・メッセージ・遷移・関係など）と、その両端 */
+export interface StructureLink {
+  /** 線そのものの要素（図の上で選べなければ null） */
+  edge: ElementRef | null;
+  from: ElementRef;
+  to: ElementRef;
+}
+
+export interface StructureSpec {
+  /** 要素を囲む枠・木の親。一番外なら null */
+  parent(source: string, ref: ElementRef): ElementRef | null;
+  /** 枠・木の子（ソースの順） */
+  children(source: string, ref: ElementRef): ElementRef[];
+  /** 図の中の線すべて（ソースの順）。線の無い図種は省略する */
+  links?(source: string): StructureLink[];
+}
+
+export interface DuplicateSpec {
+  /** 複製できる要素か */
+  accepts(ref: ElementRef): boolean;
+  /**
+   * refs（とその中身）を複製して、ソースの最後（枠の中なら同じ枠の最後）に足す変更。
+   * ID がぶつかるものは振り直し、複製する要素どうしをつなぐ線も複製する。select は複製した最初の要素
+   */
+  run(source: string, refs: ElementRef[]): ActionResult | null;
 }
 
 export interface ReorderSpec {

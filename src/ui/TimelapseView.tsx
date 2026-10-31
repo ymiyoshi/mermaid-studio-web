@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { HistoryTree } from '../core/history';
 import { renderSvg } from '../render/mermaid';
-import { recordTimelapse, videoSupported } from '../io/timelapseVideo';
+import { recordGif, recordTimelapse, videoSupported } from '../io/timelapseVideo';
 import { download, safeFileName } from '../io/download';
 import { showToast, useSession } from '../core/session';
 import { useLayout } from './layoutStore';
 import { pathToHead, sampleFrames } from './timelapse';
 import { t } from '../i18n';
 
-// タイムラプス: 最初の版から今の版までを順に描いて、図ができていく様子を再生する。WebM の動画にも書き出せる。
+// タイムラプス: 最初の版から今の版までを順に描いて、図ができていく様子を再生する。WebM の動画と GIF にも書き出せる。
 
 /** 再生する版の上限（長い履歴は間引く） */
 const MAX_FRAMES = 150;
@@ -25,7 +25,7 @@ export function TimelapseView({ tree, title, onClose }: { tree: HistoryTree; tit
   const [playing, setPlaying] = useState(frames.length > 1);
   const [speed, setSpeed] = useState(500);
   const [svg, setSvg] = useState<string | null>(null);
-  const [recording, setRecording] = useState<{ done: number; abort: AbortController } | null>(null);
+  const [recording, setRecording] = useState<{ done: number; abort: AbortController; format: 'webm' | 'gif' } | null>(null);
   const node = tree.nodes.get(frames[index])!;
   const text = useMemo(() => tree.textAt(frames[index]), [tree, frames, index]);
 
@@ -73,11 +73,11 @@ export function TimelapseView({ tree, title, onClose }: { tree: HistoryTree; tit
     return () => removeEventListener('keydown', onKey);
   });
 
-  const exportVideo = async () => {
+  const exportVideo = async (format: 'webm' | 'gif') => {
     const abort = new AbortController();
     setPlaying(false);
-    setRecording({ done: 0, abort });
-    const blob = await recordTimelapse(
+    setRecording({ done: 0, abort, format });
+    const blob = await (format === 'gif' ? recordGif : recordTimelapse)(
       frames.map((id) => {
         const n = tree.nodes.get(id)!;
         return { text: tree.textAt(id), caption: n.name ? `🔖 ${n.name}` : n.label };
@@ -88,7 +88,7 @@ export function TimelapseView({ tree, title, onClose }: { tree: HistoryTree; tit
       return null;
     });
     setRecording(null);
-    if (blob) download(blob, `${safeFileName(title)}-${t('timelapse.fileSuffix')}.webm`);
+    if (blob) download(blob, `${safeFileName(title)}-${t('timelapse.fileSuffix')}.${format}`);
   };
 
   return (
@@ -110,9 +110,14 @@ export function TimelapseView({ tree, title, onClose }: { tree: HistoryTree; tit
             </select>
           </label>
           <span className="spacer" />
-          {videoSupported() && (
-            <button className="btn" onClick={() => (recording ? recording.abort.abort() : void exportVideo())}>
+          {videoSupported() && (!recording || recording.format === 'webm') && (
+            <button className="btn" onClick={() => (recording ? recording.abort.abort() : void exportVideo('webm'))}>
               {recording ? t('timelapse.cancelVideo', { done: String(recording.done), total: String(frames.length) }) : t('timelapse.video')}
+            </button>
+          )}
+          {(!recording || recording.format === 'gif') && (
+            <button className="btn" onClick={() => (recording ? recording.abort.abort() : void exportVideo('gif'))}>
+              {recording ? t('timelapse.cancelVideo', { done: String(recording.done), total: String(frames.length) }) : t('timelapse.gif')}
             </button>
           )}
           <button className="btn" onClick={close}>

@@ -104,6 +104,15 @@ export function tableRows(source: string, table: TableDef): TableRow[] {
   for (let i = 0; i < body.length; i++) {
     const line = body[i];
     const text = line.text.trim();
+    // 読み上げの題名と説明（設計書 §17.6）は、どの図種でも表の行ではない（timeline では「期間 : 出来事」と読めてしまう）
+    if (/^acc(?:Title|Descr)\s*:/.test(text)) continue;
+    if (/^accDescr\s*\{/.test(text)) {
+      if (!text.includes('}')) {
+        const close = body.findIndex((l, j) => j > i && l.text.includes('}'));
+        if (close >= 0) i = close;
+      }
+      continue;
+    }
     for (const schema of table.schemas) {
       const parsed = schema.parse(text);
       if (!parsed) continue;
