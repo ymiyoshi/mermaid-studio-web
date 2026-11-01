@@ -213,7 +213,7 @@ export function DiagramPane() {
   const [toolbarRect, setToolbarRect] = useState<Rect | null>(null);
   const fittedFor = useRef<string | null>(null);
   /** 追加した要素。描画されたらラベル編集を始める */
-  const pendingFocus = useRef<{ ref?: ElementRef; at?: number } | null>(null);
+  const pendingFocus = useRef<{ ref?: ElementRef; at?: number; caret?: LabelSession['caret'] } | null>(null);
   const reorder = useRef<Reorder | null>(null);
   /** ドラッグ中の表示（薄くする要素と、落とす位置の線・枠） */
   const [drag, setDrag] = useState<{ key: string; line: Rect | null; box: Rect | null } | null>(null);
@@ -247,6 +247,18 @@ export function DiagramPane() {
     }
   };
 
+  /**
+   * ラベルの編集を始める。描き直しを待つ間（図の要素の範囲が今のテキストより古い間）は、描き直した後にその要素で始める。
+   * ラベルの先取り（§18.6）で図が新しく見えていても、範囲は古いテキストのものなので、すぐには始めない（黙って捨てない）
+   */
+  const requestLabelEdit = (target: DiagramTarget, caret?: LabelSession['caret']) => {
+    if (editable) return startLabelEdit(target, caret);
+    if (status === 'pending' && target.ref) {
+      setSelectedKey(keyOf(target));
+      pendingFocus.current = { ref: target.ref, caret };
+    }
+  };
+
   // SVG を差し込み、要素とソースを対応付ける
   useLayoutEffect(() => {
     const el = canvas.current;
@@ -272,7 +284,7 @@ export function DiagramPane() {
       if (added) {
         scrollIntoView(added.el);
         // 図の上で書き換えられるラベルが無い要素（Git グラフのコミットの点など）は、選ぶだけにする（「特定できない」と知らせない）
-        if (added.range || added.insertAt) startLabelEdit(added);
+        if (added.range || added.insertAt) startLabelEdit(added, p.caret);
         else setSelectedKey(keyOf(added));
       }
     }
@@ -287,25 +299,40 @@ export function DiagramPane() {
   // ラベルの文字だけを変えた編集は、描き直しを待たずに、いま出ている図の文字を書き換えて見せる（設計書 §18.6）。
   // 表示だけの先取りで、打鍵のたびに React で描き直さないよう、ストアを直に購読する。描き直しで SVG が差し替わったら targets が変わり、やり直す
   useEffect(() => {
-    let active: { key: string; label: string; revert(): void } | null = null;
-    const clear = () => {
-      active?.revert();
-      active = null;
-      canvas.current?.classList.remove('previewed');
+    /** 書き換えた要素（要素の鍵 → 書き換えた文字と、元に戻す関数） */
+    const patched = new Map<string, { label: string; revert(): void }>();
+    const revertExcept = (keep: string | null) => {
+      for (const [key, p] of patched) {
+        if (key === keep) continue;
+        p.revert();
+        patched.delete(key);
+      }
     };
+    const setPreviewed = (on: boolean) => canvas.current?.classList.toggle('previewed', on);
     const run = () => {
       const text = useSession.getState().current?.text;
       const r = useRender.getState();
-      const hit = text && r.status !== 'error' && r.svgSource === svgSource ? labelEditPreview(targets, svgSource, text.toString()) : null;
-      if (!hit) return clear();
+      const str = text?.toString();
+      // 図と同じテキストに戻った・描けなかった・別の図になった: 書き換えをすべて戻す
+      if (str === undefined || str === svgSource || r.status === 'error' || r.svgSource !== svgSource) {
+        revertExcept(null);
+        return setPreviewed(false);
+      }
+      const hit = labelEditPreview(targets, svgSource, str);
+      // ラベルの外も変わった: 書き換えはそのまま残し（戻すと、消した要素のラベルが古い文字に戻ってちらつく）、描き直しを待つ薄い表示にする
+      if (!hit) return setPreviewed(false);
+      // 1 つのラベルの中だけの変更: 図はテキストと同じ中身になるので薄くしない。ほかの要素の書き換えは、もうテキストに無いので戻す
       const key = keyOf(hit.target);
-      if (active?.key === key && active.label === hit.label) return;
-      clear();
-      const revert = patchLabelText(hit.target, hit.label);
-      if (!revert) return;
-      active = { key, label: hit.label, revert };
-      // 図はテキストと同じ中身を見せているので、「古い」の薄い表示にしない
-      canvas.current?.classList.add('previewed');
+      revertExcept(key);
+      const cur = patched.get(key);
+      if (cur?.label !== hit.label) {
+        cur?.revert();
+        patched.delete(key);
+        const revert = patchLabelText(hit.target, hit.label);
+        if (!revert) return setPreviewed(false);
+        patched.set(key, { label: hit.label, revert });
+      }
+      setPreviewed(true);
     };
     run();
     const offText = useSession.subscribe((s, prev) => {
@@ -317,7 +344,8 @@ export function DiagramPane() {
     return () => {
       offText();
       offRender();
-      clear();
+      revertExcept(null);
+      setPreviewed(false);
     };
   }, [targets, svgSource]);
 
@@ -620,9 +648,9 @@ export function DiagramPane() {
     if (bound && selected.ref) {
       e.preventDefault();
       void runAction(bound, [selected.ref]);
-    } else if ((e.key === 'Enter' || e.key === 'F2') && editable) {
+    } else if ((e.key === 'Enter' || e.key === 'F2') && canEdit) {
       e.preventDefault();
-      startLabelEdit(selected);
+      requestLabelEdit(selected);
     }
   };
 
@@ -928,7 +956,7 @@ export function DiagramPane() {
       case 'a':
       case 'c c':
       case 'S':
-        if (selected && editable && !session) startLabelEdit(selected, cmd === 'i' ? 'start' : cmd === 'a' ? 'end' : 'clear');
+        if (selected && canEdit && !session) requestLabelEdit(selected, cmd === 'i' ? 'start' : cmd === 'a' ? 'end' : 'clear');
         return true;
       case '<CR>':
         // 接続モード: 選んでいる要素へ接続する。それ以外は標準の Enter（ラベルの編集）に任せる
@@ -1080,8 +1108,8 @@ export function DiagramPane() {
   const onDoubleClick = (e: React.MouseEvent) => {
     // ポインタキャプチャ中は e.target が viewport になるので、座標から要素を引く
     const hit = targetAt(document.elementFromPoint(e.clientX, e.clientY));
-    if (!hit || !editable || connect) return;
-    startLabelEdit(hit);
+    if (!hit || !canEdit || connect) return;
+    requestLabelEdit(hit);
   };
 
   // 再描画のあと、編集中の要素を探し直して入力欄の位置を合わせる（§6.1）

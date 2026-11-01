@@ -38,3 +38,33 @@ test('ラベルに打った文字は描き直しを待たずに図に出て、�
   expect(after).toEqual({ previewed: false, shown: false });
   await expect(node(page, '追加')).toBeVisible();
 });
+
+test('先取りで新しく見えている間に押したラベルの編集は、描き直した後に始める（黙って捨てない）', async ({ page }) => {
+  await openApp(page);
+  const lines = ['flowchart TD'];
+  for (let i = 1; i < 200; i++) lines.push(`  N${i - 1}[ノード ${i - 1}] --> N${i}[ノード ${i}]`);
+  await setEditorText(page, lines.join('\n'));
+  await expect(node(page, 'ノード 199')).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator('.diagram-viewport')).toHaveClass(/editable/);
+  await node(page, 'ノード 199').first().click();
+
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('ControlOrMeta+End');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.insertText('改');
+  // まだ描き直しを待っている間に（先取りで図には出ている）、図で Enter を押す
+  const pressed = await page.evaluate(() => {
+    const vp = document.querySelector('.diagram-viewport') as HTMLElement;
+    const state = {
+      stale: vp.classList.contains('stale'),
+      shown: document.querySelector('.diagram-canvas')!.textContent!.includes('ノード 199改'),
+    };
+    vp.focus();
+    vp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    return state;
+  });
+  expect(pressed).toEqual({ stale: true, shown: true });
+  const input = page.locator('.inline-label-editor input');
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('ノード 199改');
+});
