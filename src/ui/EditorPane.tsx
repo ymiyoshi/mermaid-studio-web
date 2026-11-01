@@ -30,9 +30,17 @@ import { vimExtension } from './editorVim';
 
 const External = Annotation.define<boolean>();
 
-/** 警告（§17.5）を出すまでの、入力が止まっている時間と、直し方の案を確かめる数の上限 */
+/**
+ * 警告（§17.5）を出すまでの、入力が止まっている時間と、直し方の案を確かめる数の上限。
+ * 確かめる mermaid.parse は大きな図では 1 回 80ms ほどかかるので、合計の時間にも上限を置く（§18。
+ * 小さな図では数の上限まで確かめ、200 ノード規模では 2 つほどで止まる。残りの警告は案なしで出す）
+ */
 const LINT_DELAY_MS = 400;
 const LINT_FIX_CHECKS = 8;
+const LINT_FIX_BUDGET_MS = 120;
+
+/** 確かめる合間に、打鍵や描画を先に通す */
+const yieldToInput = () => new Promise<void>((r) => setTimeout(r, 0));
 
 const toSel = (s: Sel) => EditorSelection.single(s.anchor, s.head);
 
@@ -220,13 +228,19 @@ export function EditorPane() {
       const warnings = lintDiagram(source, diagramType);
       // 直し方の案は、mermaid.parse を通るものだけ出す。確かめるのは 1 つずつ、上限まで（それより後ろの警告は案なしで出す）
       let budget = LINT_FIX_CHECKS;
+      let spent = 0;
       const checked = [];
       for (const w of warnings) {
         const fixes = [];
         for (const f of w.fixes) {
-          if (budget <= 0 || cancelled) break;
+          if (budget <= 0 || spent >= LINT_FIX_BUDGET_MS) break;
+          await yieldToInput();
+          if (cancelled) return;
           budget--;
-          if ((await validate(applySpec(source, f.spec))).ok) fixes.push(f);
+          const t0 = performance.now();
+          const ok = (await validate(applySpec(source, f.spec))).ok;
+          spent += performance.now() - t0;
+          if (ok) fixes.push(f);
         }
         checked.push({ ...w, fixes });
       }

@@ -5,14 +5,32 @@ import { refreshStorageInfo, showToast } from './notify';
 
 // 設計書 §8.5: 変更は少し待ってから、文書と履歴を 1 つのトランザクションでまとめて保存する。
 
+/** 入力が止まってから保存するまでの時間 */
 const PERSIST_DELAY_MS = 300;
+/** 打ち続けていても、最初の未保存の変更からこれより長くは待たない（閉じたときに失うのは最大でこの間の変更。§8.5・§18） */
+const PERSIST_MAX_WAIT_MS = 1000;
+/** 保存のたびに使用量を問い合わせない（§18。失敗したときは間を空けずに問い合わせる） */
+const STORAGE_INFO_INTERVAL_MS = 5000;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
+/** 待っている保存のきっかけになった、最初の変更の時刻 */
+let firstPendingAt = 0;
 let docDirty = false;
+let storageInfoAt = -Infinity;
 
 export function schedulePersist() {
   docDirty = true;
-  if (persistTimer) return;
-  persistTimer = setTimeout(() => void flush(), PERSIST_DELAY_MS);
+  const now = Date.now();
+  if (persistTimer) clearTimeout(persistTimer);
+  else firstPendingAt = now;
+  const wait = Math.min(PERSIST_DELAY_MS, firstPendingAt + PERSIST_MAX_WAIT_MS - now);
+  persistTimer = setTimeout(() => void flush(), Math.max(0, wait));
+}
+
+function refreshStorageInfoSometimes() {
+  const now = Date.now();
+  if (now - storageInfoAt < STORAGE_INFO_INTERVAL_MS) return;
+  storageInfoAt = now;
+  void refreshStorageInfo();
 }
 
 /** 書き込み中の保存。保存は 1 本ずつ走らせる */
@@ -53,17 +71,19 @@ async function save(cur: CurrentDoc): Promise<boolean> {
     const saved = await store.saveDocAndNodes(record, nodes, { existing: true });
     if (saved) {
       set({ docs: upsertDoc(get().docs, saved) });
-      broadcast({ type: 'saved', docId: cur.id });
+      // 書いた文書を載せる（受け取ったタブが文書の一覧を読み直さずに済む）
+      broadcast({ type: 'saved', docId: cur.id, doc: saved });
     }
   } catch (e) {
     // 次回の保存で再試行する
     nodes.forEach((n) => cur.tree.dirty.add(n.id));
     docDirty = true;
     showToast(String((e as Error)?.message ?? e));
+    storageInfoAt = Date.now();
     void refreshStorageInfo();
     return false;
   }
-  void refreshStorageInfo();
+  refreshStorageInfoSometimes();
   return true;
 }
 

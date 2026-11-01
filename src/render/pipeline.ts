@@ -28,19 +28,23 @@ export const useRender = create<RenderState>(() => ({
 }));
 
 /**
- * 描き終えてから次に描き始めるまでの最小の間隔（設計書 §17.1）。
- * 間が空いた後の入力はすぐ描き、続けて打っている間は「描き終えてからこの間隔の後に、最新のテキストを描く」。
+ * 描いている間に入力があったとき、描き終えてから次に描き始めるまで空ける間隔（設計書 §17.1・§18）。
+ * 描いている間に入力が無ければ（描き終えた後の入力なら）、待たずにすぐ描く。続けて打っている間だけ
+ * 「描き終えてからこの間隔の後に、最新のテキストを描く」（その間に打鍵を画面に出す）。
  * 描画（mermaid.render）は中で構文解析もするので、描く前に別に検証しない（200 ノードで parse が 80ms ほどかかり、2 回読むことになる）
  */
-const RENDER_GAP_MS = 150;
+export const RENDER_GAP_MS = 150;
 let seq = 0;
-let timer: ReturnType<typeof setTimeout> | null = null;
+/** 描き始めを待っているときの取り消し */
+let timer: (() => void) | null = null;
 /** 描いている途中か */
 let rendering = false;
 /** 最後に描き終えた時刻 */
 let lastEnd = -Infinity;
 /** 描きたい最新のテキスト（描いている間に変わったら、描き終えてから描く） */
 let wanted: string | null = null;
+/** 今の描画の途中に入力があったか（続けて打っているか） */
+let typedWhileRendering = false;
 
 async function renderLatest() {
   timer = null;
@@ -49,6 +53,7 @@ async function renderLatest() {
   const mySeq = seq;
   wanted = null;
   rendering = true;
+  typedWhileRendering = false;
   let r: Awaited<ReturnType<typeof renderSvg>>;
   try {
     r = await renderSvg(text);
@@ -64,17 +69,38 @@ async function renderLatest() {
   schedule();
 }
 
+function later(ms: number, fn: () => void): () => void {
+  const id = setTimeout(fn, ms);
+  return () => clearTimeout(id);
+}
+
+/**
+ * 次に画面を描いた後で fn を呼ぶ。mermaid.render は最初の数十〜百 ms を打鍵と同じタスクの中で進めるので、
+ * すぐ呼ぶと、打った文字がエディタに出るのが描画の分だけ遅れる（§18）
+ */
+function afterPaint(fn: () => void): () => void {
+  // 隠れたタブでは画面を描かない（requestAnimationFrame が呼ばれない）ので、待たずに描く（読み取り専用のタブが保存に追従するため）
+  if (typeof requestAnimationFrame !== 'function' || (typeof document !== 'undefined' && document.hidden)) return later(0, fn);
+  let cancelTimer: (() => void) | null = null;
+  const frame = requestAnimationFrame(() => (cancelTimer = later(0, fn)));
+  return () => {
+    cancelAnimationFrame(frame);
+    cancelTimer?.();
+  };
+}
+
 function schedule() {
   if (rendering || wanted === null || timer) return;
-  const wait = lastEnd + RENDER_GAP_MS - performance.now();
-  if (wait <= 0) void renderLatest();
-  else timer = setTimeout(() => void renderLatest(), wait);
+  const wait = typedWhileRendering ? lastEnd + RENDER_GAP_MS - performance.now() : 0;
+  const run = () => void renderLatest();
+  timer = wait <= 0 ? afterPaint(run) : later(wait, run);
 }
 
 function update(text: string) {
   ++seq;
+  if (rendering) typedWhileRendering = true;
   if (text.trim() === '') {
-    if (timer) clearTimeout(timer);
+    timer?.();
     timer = null;
     wanted = null;
     useRender.setState({ status: 'empty', error: null, diagramType: null, svg: null, svgSource: '', stale: false });

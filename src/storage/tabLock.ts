@@ -1,6 +1,8 @@
 // 設計書 §8.5: 同じ図を複数のタブで開いたとき、書き込めるのは 1 タブだけにする。
 // Web Locks で書き込み権を取り、取れなかったタブは読み取り専用で BroadcastChannel の更新に追従する。
 
+import type { DocRecord } from './db';
+
 export interface DocLock {
   acquired: boolean;
   release(): void;
@@ -48,7 +50,8 @@ export function acquireDocLock(docId: string): Promise<DocLock> {
   });
 }
 
-type Message = { type: 'saved'; docId: string } | { type: 'docs-changed' };
+/** saved の doc は書いた文書（古い版のタブから来たものには無い） */
+type Message = { type: 'saved'; docId: string; doc?: DocRecord } | { type: 'docs-changed' };
 
 const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('mermaid-studio') : null;
 
