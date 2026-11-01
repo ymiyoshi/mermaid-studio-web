@@ -44,12 +44,13 @@ npm run preview  # 本番ビルドの確認
 
 | 種類 | 場所 | 内容 |
 |---|---|---|
-| 単体 | `tests/*.test.ts` | 履歴ツリー、入力のまとめ方（vi の編集単位を含む）、vi のキーの読み取りと作った順の履歴のたどり、各図種の操作（追加・削除・プロパティ）、表、Markdown、URL 共有、保存形式（版の移行を含む）、構造をたどる API と複製・要素の一覧、怪しいところの警告、accTitle / accDescr、木の図種の変換、GIF の符号化（読み戻して確かめる） |
+| 単体 | `tests/*.test.ts` | 履歴ツリー、入力のまとめ方（vi の編集単位を含む）、vi のキーの読み取りと作った順の履歴のたどり、各図種の操作（追加・削除・プロパティ・ドラッグでの移動）、表、Markdown、URL 共有、保存形式（版の移行を含む）、保存の時機と失敗したとき、描き直しの時機、ラベルの先取り表示、構造をたどる API と複製・要素の一覧、怪しいところの警告、accTitle / accDescr、木の図種の変換、GIF の符号化（読み戻して確かめる） |
 | SVG の対応付け | `tests/svgMapping.test.ts` | mermaid が実際に描いた SVG（`tests/fixtures/rendered-svg.json`）を図種ごとにソースへ対応付ける回帰テスト |
 | 性質ベース | `tests/property.test.ts` | ランダムな図に操作（複製を含む）を当て、結果が `mermaid.parse` を通る・コメント行と対象外の行が変わらないことを確かめる（fast-check） |
 | 結合 | `tests/session.test.ts`、`tests/files*.test.ts`、`tests/launchFiles.test.ts`、`tests/folders.test.ts` | 文書の管理・保存と読み込み直し・複数タブの書き込み権、ファイルの読み書き・外部での変更・バックアップ・共有リンク、OS から渡されたファイルを開く（ファイルの関連付け）、フォルダを開く |
-| コンポーネント | `tests/components.test.tsx` | 入力欄（IME・確定時の反映）、色の欄（パレット）、タグ、表、履歴、一覧、ラベルの直接編集（React Testing Library） |
-| E2E | `e2e/*.spec.ts` | 起動、テキストと図の編集、undo と再読み込み、表、共有リンク、PNG 出力、複数タブ、オフライン、狭い画面、ファイルの関連付け（launchQueue）、カラーパレット、タイムラプスの書き出し（WebM・GIF）、vi のキーバインド、構造をたどるキー・複製・要素の一覧、怪しいところの警告、フォルダを開く（OPFS で代用） |
+| コンポーネント | `tests/components.test.tsx`、`tests/viEditor.test.tsx` | 入力欄（IME・確定時の反映）、色の欄（パレット）、タグ、表、履歴、一覧、ラベルの直接編集、vi のエディタ（React Testing Library） |
+| E2E | `e2e/*.spec.ts` | 起動、テキストと図の編集、undo と再読み込み、表、共有リンク、PNG 出力、複数タブ、オフライン、狭い画面、ファイルの関連付け（launchQueue）、カラーパレット、タイムラプスの書き出し（WebM・GIF）、vi のキーバインド、構造をたどるキー・複製・要素の一覧、怪しいところの警告、フォルダを開く（OPFS で代用）、ラベルの先取り表示 |
+| 応答時間 | `perf/perf.spec.ts` | 設計書 §11・§18.1 の計測（`npm run perf`。失敗にはしない） |
 
 mermaid の版を上げたときは、`tests/fixtures/capture.js` で SVG の見本を作り直し、`npm test` と `npm run test:e2e` が通ることを確かめる。
 E2E の `test.fail` は既知の不具合を表す（直したら外す）。
@@ -60,12 +61,16 @@ E2E の `test.fail` は既知の不具合を表す（直したら外す）。
 |---|---|
 | `src/core/history.ts` | ツリー型の履歴（ChangeSet の forward/inverse、スナップショット、ジャンプ、チェックポイント、分岐の整理） |
 | `src/core/coalesce.ts` | 入力を履歴 1 ステップにまとめる規則 |
-| `src/core/session.ts` | 文書の状態。すべての変更が通る `applyChanges()`、保存、複数タブ制御 |
-| `src/storage/` | IndexedDB（文書・履歴・ファイルの結び付き・サムネイル・設定）、Web Locks / BroadcastChannel |
+| `src/core/editing.ts` | すべての変更が通る `applyChanges()`、図からの操作を検証してから適用する `applyDiagramChange()`、undo / redo・履歴の移動 |
+| `src/core/documents.ts`・`persistence.ts` | 図を開く・作る・消す、複数タブの書き込み権 / 保存の時機と書き出し |
+| `src/core/session.ts` | UI と `src/io/` 向けの公開窓口（再エクスポートだけ） |
+| `src/storage/` | IndexedDB（文書・履歴・ファイルの結び付き・サムネイル・フォルダ・設定。版 4）、Web Locks / BroadcastChannel |
 | `src/io/` | ファイルの読み書き（.mmd / .md）・フォルダ、画像の書き出し（SVG / PNG）、タイムラプス（WebM / GIF）、バックアップ（JSON）、URL 共有 |
 | `src/render/` | mermaid による検証と描画、エディタ用ハイライト、サムネイル、怪しいところの警告（`lint.ts`） |
 | `src/plugins/` | 図種プラグイン（下の表）と、汎用フォールバック（ラベル編集）。構造をたどる共通処理（`structure.ts`）、accTitle / accDescr（`accessibility.ts`）、木の図種の変換（`convertTree.ts`） |
-| `src/ui/` | 画面（一覧・エディタ・図・プロパティパネル・履歴） |
+| `src/ui/` | 画面（ヘッダーのメニュー・一覧・エディタ・図・プロパティパネル・要素の一覧・履歴・コマンドパレット）、vi のキーの振り分け（`viDispatch.ts`・`editorVim.ts`）、ラベルの先取り表示（`labelPreview.ts`） |
+| `src/i18n.ts`・`src/locales/` | UI の文言（日本語と英語。図種プラグインの文言は分野ごとの辞書） |
+| `tests/`・`e2e/`・`perf/` | Vitest・Playwright の E2E・応答時間の計測（上の「テスト」） |
 
 ## 図種ごとの編集
 
@@ -126,6 +131,7 @@ E2E の `test.fail` は既知の不具合を表す（直したら外す）。
 - [x] 要素の一覧: 図のペインの「一覧」で、要素を枠・木の親子で並べ、絞り込んで選ぶ（キーボードで ↑ ↓ と Enter）（設計書 §17.4）
 - [x] 読み上げ用の題名と説明（accTitle / accDescr）を、プロパティパネルの図全体の欄で編集する（設計書 §17.6）
 - [x] 木の図種の変換: mindmap・treeView・ishikawa を互いに変換する（プロパティパネル・コマンドパレット。履歴 1 ステップ）（設計書 §17.7）
+- [x] 性能の改善: 描き直しの待ち・打鍵の表示・警告の確かめ・保存の回数を減らし、ラベルの文字だけの編集は描き直しを待たずに図に出す（9ms）。前後の計測は `npm run perf`（設計書 §18）
 - [x] フォルダを開く（Chromium 系）: リポジトリの `docs/` などを開き、中の `.mmd`・`.mermaid`・mermaid のブロックがある `.md` を一覧に並べ、開いて元のファイルに上書き保存する。次に起動したときも一覧に残る（設計書 §17.9）
 
 ### 既知の制限・未実装
