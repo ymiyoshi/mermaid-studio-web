@@ -1,5 +1,6 @@
-import { createFromTemplate, showToast, useSession } from '../core/session';
+import { createFromTemplate, flush, showToast, useSession } from '../core/session';
 import * as store from '../storage/db';
+import { buildBackup } from './backup';
 import { download, isAbortError, safeFileName } from './download';
 import { t } from '../i18n';
 
@@ -31,6 +32,24 @@ export async function exportCurrentDoc(): Promise<string | null> {
   const name = `${safeFileName(title)}.mmd`;
   download(new Blob([text], { type: 'text/plain;charset=utf-8' }), name);
   return name;
+}
+
+/**
+ * すべての図を履歴つきでバックアップ（JSON）として保存させる。書き出した件数を返す。
+ * 「ファイル → すべての図をバックアップ」（exportBackup）と同じ形式だが、復旧画面ではトーストが出ず、
+ * 保存（flush）が失敗する状態でもありうるので、保存は試すだけにして IndexedDB にある内容を必ず書き出す。
+ */
+export async function exportAllDocs(): Promise<number> {
+  try {
+    await flush();
+  } catch {
+    // 保存できなくても、IndexedDB に残っている内容は書き出す
+  }
+  const docs = (await store.listDocs()).filter((d) => d.deletedAt === null);
+  const entries = await Promise.all(docs.map(async (doc) => ({ doc, history: await store.loadHistory(doc.id) })));
+  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  download(new Blob([JSON.stringify(buildBackup(entries))], { type: 'application/json' }), `mermaid-studio-backup-${date}.json`);
+  return entries.length;
 }
 
 /** 次の読み込みで最後の図を開かないようにして、ページを読み込み直す */

@@ -1,6 +1,5 @@
 import { Component, useState, type ErrorInfo, type ReactNode } from 'react';
-import { exportBackup } from '../io/backup';
-import { exportCurrentDoc, restartWithoutLastDoc } from '../io/recovery';
+import { exportAllDocs, exportCurrentDoc, restartWithoutLastDoc } from '../io/recovery';
 import { t } from '../i18n';
 
 // 画面全体の ErrorBoundary。描画中の例外で白い画面のまま止まらないよう、復旧画面に切り替える。
@@ -74,10 +73,7 @@ export function RecoveryScreen({ error }: { error: Error }) {
     const name = await exportCurrentDoc();
     return name ? t('recovery.exported', { name }) : t('recovery.noCurrent');
   });
-  const backupAll = run(async () => {
-    await exportBackup();
-    return null;
-  });
+  const backupAll = run(async () => t('backup.exported', { n: String(await exportAllDocs()) }));
 
   return (
     <div className="recovery" role="alert">

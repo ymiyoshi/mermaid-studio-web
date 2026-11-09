@@ -21,6 +21,7 @@ vi.mock('../src/io/download', async (importOriginal) => {
 });
 
 const { RecoveryBoundary, showRecovery } = await import('../src/ui/RecoveryBoundary');
+const { parseBackup } = await import('../src/io/backup');
 const { exportCurrentDoc, installGlobalErrorHandlers, startWithNewDoc, takeSafeStart } = await import('../src/io/recovery');
 
 beforeAll(async () => {
@@ -90,6 +91,27 @@ describe('RecoveryBoundary', () => {
     await waitFor(() => expect(screen.getByRole('status').textContent).toBe(t('recovery.exported', { name: '保存する図.mmd' })));
     expect(downloads.map((d) => d.name)).toEqual(['保存する図.mmd']);
     expect(await downloads[0].text).toBe('flowchart LR\n  A --> B\n');
+  });
+});
+
+describe('復旧画面からのバックアップ', () => {
+  it('すべての図を書き出し、件数を画面に出す（トーストは出ないため）', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(
+      <RecoveryBoundary>
+        <Boom />
+      </RecoveryBoundary>,
+    );
+    spy.mockRestore();
+    const alive = (await db.listDocs()).filter((d) => d.deletedAt === null).length;
+    expect(alive).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: t('recovery.exportAll') }));
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe(t('backup.exported', { n: String(alive) })));
+    expect(downloads).toHaveLength(1);
+    expect(downloads[0].name).toMatch(/^mermaid-studio-backup-\d{8}\.json$/);
+    const parsed = parseBackup(await downloads[0].text);
+    expect(parsed.docs).toHaveLength(alive);
   });
 });
 
