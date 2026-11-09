@@ -18,7 +18,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # ci.yml（型チェック・テスト・ビルド・E2E）をそのまま前段として走らせる。PR を通らない main への直接 push でも、
+  # E2E が落ちたら公開しない。dependency-review は pull_request のときだけなので、ここでは飛ばされる
+  ci:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   build:
+    needs: ci
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
