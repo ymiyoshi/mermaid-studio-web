@@ -6,6 +6,8 @@ name: CI
 on:
   pull_request:
   workflow_dispatch:
+  # deploy.yml が公開の前段として呼ぶ（main に直接 push したときも E2E を通す）
+  workflow_call:
 
 permissions:
   contents: read

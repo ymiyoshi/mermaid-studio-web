@@ -66,6 +66,10 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.{ts,tsx}'],
+    // mermaid は図種ごとのモジュールを初めての parse で読み込む。ファイルごとに作り直すワーカーでは、
+    // その読み込みがテストの時間に入る（30 図種で 1 回目 900ms・2 回目 130ms ほど）。全件を並べて
+    // 走らせると CPU を取り合って 4〜5 倍になり、既定の 5 秒を超えて落ちることがあったので延ばす
+    testTimeout: 30_000,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.{ts,tsx}'],
